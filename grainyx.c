@@ -28,6 +28,7 @@ static void make_bayer_slice
     uint offset,
     uint stride
   )
+  /* recursively constructs a submatrix of a Bayer matrix. */
   {
     static const cpnt_t d2[4] = {3, 1, 0, 2};
     if (order > 1)
@@ -66,9 +67,10 @@ static void make_bayer_slice
 
 static void make_bayer
   (
-    uint order,
+    uint order, /* must be power of 2 */
     cpnt_t * coeffs /* array[order * order] */
   )
+  /* fills coeffs with a Bayer matrix of the specified order. */
   {
     make_bayer_slice(order, coeffs, 0, order);
   } /*make_bayer*/
@@ -147,7 +149,7 @@ static PyMethodDef grainyx_methods[] =
     {"bayer", grainyx_bayer, METH_VARARGS,
         "bayer(order)\n"
         "returns a tuple of (order * order) coefficients making up a Bayer ordered-dither"
-        " matrix. order must be a power of 2"
+        " matrix. order must be a power of 2."
     },
     {0, 0, 0, 0} /* marks end of list */
   };
