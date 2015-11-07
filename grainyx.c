@@ -69,6 +69,7 @@ static uint make_bayer_slice
     else
       {
         coeffs[offset] = 1;
+        coeff_bits = 1;
       } /*if*/
     return
         coeff_bits;
@@ -94,12 +95,13 @@ static PyObject * grainyx_bayer
     PyObject * self,
     PyObject * args
   )
-  /* returns a tuple of coefficients making up a Bayer ordered-dither matrix. */
   {
     uint order;
     PyObject * result = 0;
     uint * coeffs = 0;
-    PyObject * result_temp = 0;
+    uint coeff_bits;
+    PyObject * coeffs_tuple = 0;
+    PyObject * result_tuple = 0;
     uint row, col;
     do /*once*/
       {
@@ -116,9 +118,9 @@ static PyObject * grainyx_bayer
             PyErr_NoMemory();
             break;
           } /*if*/
-        make_bayer(order, coeffs);
-        result_temp = PyTuple_New(order * order);
-        if (result_temp == 0)
+        coeff_bits = make_bayer(order, coeffs);
+        coeffs_tuple = PyTuple_New(order * order);
+        if (coeffs_tuple == 0)
             break;
         for (row = 0;;)
           {
@@ -130,7 +132,7 @@ static PyObject * grainyx_bayer
                     break;
                 PyTuple_SET_ITEM
                   (
-                    result_temp,
+                    coeffs_tuple,
                     row * order + col,
                     PyLong_FromLong(coeffs[row * order + col])
                   );
@@ -144,12 +146,20 @@ static PyObject * grainyx_bayer
           } /*for*/
         if (PyErr_Occurred())
             break;
+        result_tuple = PyTuple_New(2);
+        if (result_tuple == 0)
+            break;
+        PyTuple_SET_ITEM(result_tuple, 0, PyLong_FromLong(coeff_bits));
+        if (PyErr_Occurred())
+            break;
+        PyTuple_SET_ITEM(result_tuple, 1, coeffs_tuple);
+        coeffs_tuple = 0; /* so I don't dispose of it yet */
       /* all done */
-        result = result_temp;
-        result_temp = 0; /* so I don't free it yet */
+        result = result_tuple;
+        result_tuple = 0; /* so I don't free it yet */
       }
     while (false);
-    Py_XDECREF(result_temp);
+    Py_XDECREF(coeffs_tuple);
     free(coeffs);
     return
         result;
@@ -308,8 +318,9 @@ static PyMethodDef grainyx_methods[] =
   {
     {"bayer", grainyx_bayer, METH_VARARGS,
         "bayer(order)\n"
-        "returns a tuple of (order * order) coefficients making up a Bayer ordered-dither"
-        " matrix. order must be a power of 2."
+        "returns a tuple(coeff_bits, coeffs) where coeffs is a tuple of (order * order)"
+        " coefficients making up a Bayer ordered-dither matrix, and coeff_bits is the"
+        " number of bits needed to hold each coefficient value. order must be a power of 2."
     },
     {"ordered_dither", grainyx_ordered_dither, METH_VARARGS,
         "ordered_dither(pix, depth, order, do_a, do_r, do_g, do_b)\n"
