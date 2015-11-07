@@ -282,7 +282,7 @@ static PyObject * grainyx_ordered_dither
                                     frac >> drop_bits - coeff_bits \
                                 : \
                                     frac << coeff_bits - drop_bits; \
-                            frac = frac > threshold ? CPNT_MAX : 0; \
+                            frac = (val & drop_mask + 1) + frac > threshold ? CPNT_MAX : 0; \
                             val = val & keep_mask | frac & drop_mask; \
                           } \
                         else \
