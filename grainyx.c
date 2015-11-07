@@ -3,9 +3,11 @@
 */
 
 #include <iso646.h>
+#include <cairo/cairo.h>
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 /*
     Miscellaneous useful stuff
@@ -18,8 +20,11 @@ typedef unsigned char
     cpnt_t; /* pixel component type */
 enum
   {
-    CPNT_MAX = 255, /* max value of cpnt_t */
+    CPNT_BITS = 8,
+    CPNT_MAX = (1 << CPNT_BITS) - 1, /* max value of cpnt_t */
   };
+typedef uint32_t
+    pix_type;
 
 static void make_bayer_slice
   (
@@ -95,7 +100,7 @@ static PyObject * grainyx_bayer
       {
         if (not PyArg_ParseTuple(args, "I", &order))
             break;
-        if ((order - 1 & order) != 0)
+        if (order == 0 or (order - 1 & order) != 0)
           {
             PyErr_SetString(PyExc_ValueError, "order must be power of 2");
             break;
@@ -141,8 +146,158 @@ static PyObject * grainyx_bayer
     while (false);
     Py_XDECREF(result_temp);
     free(coeffs);
-    return result;
+    return
+        result;
   } /*grainyx_bayer*/
+
+static PyObject * grainyx_ordered_dither
+  (
+    PyObject * self,
+    PyObject * args
+  )
+  {
+    PyObject * result = 0;
+    cairo_surface_t * pix = 0;
+    cairo_format_t pix_fmt;
+    uint new_depth, dither_order;
+    bool do_a, do_r, do_g, do_b;
+    cpnt_t * coeffs = 0;
+    do /*once*/
+      {
+          {
+            unsigned long pixaddr; /* why is there no Py_size_t? */
+            uint i_do_a, i_do_r, i_do_g, i_do_b;
+            do /*once*/
+              {
+                if
+                  (
+                    not PyArg_ParseTuple
+                      (
+                        args,
+                        "kIIpppp",
+                        &pixaddr, &new_depth, &dither_order, &i_do_a,  &i_do_r, &i_do_g, &i_do_b
+                      )
+                  )
+                    break;
+                if (new_depth > CPNT_BITS)
+                  {
+                    PyErr_Format(PyExc_ValueError, "depth cannot exceed %d", CPNT_BITS);
+                    break;
+                  } /*if*/
+                if (dither_order > CPNT_BITS / 2 or dither_order > 1 and (dither_order - 1 & dither_order) != 0)
+                  {
+                    PyErr_Format(PyExc_ValueError, "order must be power of 2 not greater than %d", CPNT_BITS / 2);
+                    break;
+                  } /*if*/
+                pix = (cairo_surface_t *)pixaddr;
+                cairo_surface_reference(pix);
+                if (cairo_surface_get_type(pix) != CAIRO_SURFACE_TYPE_IMAGE)
+                  {
+                    PyErr_SetString(PyExc_TypeError, "not an image surface");
+                    break;
+                  } /*if*/
+                pix_fmt = cairo_image_surface_get_format(pix);
+                if (pix_fmt != CAIRO_FORMAT_ARGB32 and pix_fmt != CAIRO_FORMAT_RGB24)
+                  {
+                    PyErr_SetString(PyExc_TypeError, "unsupported image surface format");
+                    break;
+                  } /*if*/
+                do_a = i_do_a;
+                if (do_a and pix_fmt != CAIRO_FORMAT_ARGB32)
+                  {
+                    PyErr_SetString(PyExc_TypeError, "cannot do_a with no alpha");
+                    break;
+                  } /*if*/
+                do_r = i_do_r;
+                do_g = i_do_g;
+                do_b = i_do_b;
+              }
+            while (false);
+          }
+        if (PyErr_Occurred())
+            break;
+        if (not (do_a or do_r or do_g or do_b) or new_depth == CPNT_BITS)
+          {
+          /* nothing to do */
+            Py_INCREF(Py_None);
+            result = Py_None; /* return success */
+            break;
+          } /*if*/
+          {
+            uint drop_bits;
+            cpnt_t * pix_base;
+            uint width, height, row, col;
+            cpnt_t drop_mask, keep_mask;
+            size_t stride;
+            if (dither_order > 1)
+              {
+                coeffs = calloc(dither_order * dither_order, sizeof(cpnt_t));
+                if (coeffs == 0)
+                  {
+                    PyErr_NoMemory();
+                    break;
+                  } /*if*/
+                make_bayer(dither_order, coeffs);
+              } /*if*/
+            Py_BEGIN_ALLOW_THREADS
+            drop_bits = CPNT_BITS - new_depth;
+            drop_mask = (1 << drop_bits) - 1;
+            keep_mask = ~drop_mask;
+            cairo_surface_flush(pix);
+            pix_base = cairo_image_surface_get_data(pix);
+            stride = cairo_image_surface_get_stride(pix);
+            width = cairo_image_surface_get_width(pix);
+            height = cairo_image_surface_get_height(pix);
+            for (row = 0; row != height; ++row)
+              {
+                pix_type * const row_base = (pix_type *)(pix_base + row * stride);
+                for (col = 0; col != width; ++col)
+                  {
+                    pix_type pixel = row_base[col];
+#define cond_do(doit, shift) \
+                    if (doit) \
+                      { \
+                        pix_type val = pixel >> shift & CPNT_MAX; \
+                        if (dither_order > 1) \
+                          { \
+                            cpnt_t const threshold = coeffs[row % dither_order * dither_order + col % dither_order]; \
+                            cpnt_t frac = val & drop_mask; \
+                            frac = \
+                                drop_bits > dither_order ? \
+                                    frac >> drop_bits - dither_order \
+                                : \
+                                    frac << dither_order - drop_bits; \
+                            frac = frac >= threshold ? CPNT_MAX : 0; \
+                            val = val & keep_mask | frac & drop_mask; \
+                          } \
+                        else \
+                          { \
+                            val = (val & keep_mask) * CPNT_MAX / (CPNT_MAX - drop_mask); \
+                              /* normalize truncated value to full brightness */ \
+                          } /*if*/ \
+                        pixel = pixel & ~(CPNT_MAX << shift) | val << shift; \
+                      } /*if*/
+                    cond_do(do_a, 3 * CPNT_BITS)
+                    cond_do(do_r, 2 * CPNT_BITS)
+                    cond_do(do_g, CPNT_BITS)
+                    cond_do(do_b, 0)
+#undef cond_do
+                    row_base[col] = pixel;
+                  } /*for*/
+              } /*for*/
+            cairo_surface_mark_dirty(pix);
+            Py_END_ALLOW_THREADS
+          }
+      /* all successfully done */
+        Py_INCREF(Py_None);
+        result = Py_None;
+      }
+    while (false);
+    free(coeffs);
+    cairo_surface_destroy(pix);
+    return
+        result;
+  } /*grainyx_ordered_dither*/
 
 static PyMethodDef grainyx_methods[] =
   {
@@ -150,6 +305,12 @@ static PyMethodDef grainyx_methods[] =
         "bayer(order)\n"
         "returns a tuple of (order * order) coefficients making up a Bayer ordered-dither"
         " matrix. order must be a power of 2."
+    },
+    {"ordered_dither", grainyx_ordered_dither, METH_VARARGS,
+        "ordered_dither(pix, depth, order, do_a, do_r, do_g, do_b)\n"
+        "reduces the pixels in pix, which must be a pointer to a cairo_surface_t"
+        " of FORMAT_RGB24 or FORMAT_ARGB32, down to depth bits per component."
+        " order is size of the dither matrix to use; it must be a power of 2."
     },
     {0, 0, 0, 0} /* marks end of list */
   };
