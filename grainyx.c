@@ -26,16 +26,17 @@ enum
 typedef uint32_t
     pix_type;
 
-static void make_bayer_slice
+static uint make_bayer_slice
   (
     uint order,
-    cpnt_t * coeffs,
+    uint * coeffs,
     uint offset,
     uint stride
   )
   /* recursively constructs a submatrix of a Bayer matrix. */
   {
-    static const cpnt_t d2[4] = {3, 1, 0, 2};
+    static const uint d2[4] = {3, 1, 0, 2};
+    uint coeff_bits;
     if (order > 1)
       {
         if (order > 2)
@@ -44,7 +45,7 @@ static void make_bayer_slice
             make_bayer_slice(order / 2, coeffs, offset, stride);
             make_bayer_slice(order / 2, coeffs, offset + order / 2, stride);
             make_bayer_slice(order / 2, coeffs, offset + order / 2 * stride, stride);
-            make_bayer_slice(order / 2, coeffs, offset + order / 2 * (stride + 1), stride);
+            coeff_bits = make_bayer_slice(order / 2, coeffs, offset + order / 2 * (stride + 1), stride) + 2;
             for (row = 0; row != order; ++row)
               {
                 for (col = 0; col != order; ++col)
@@ -62,22 +63,26 @@ static void make_bayer_slice
             coeffs[offset + 1] = d2[1];
             coeffs[offset + stride] = d2[2];
             coeffs[offset + stride + 1] = d2[3];
+            coeff_bits = 2;
           } /*if*/
       }
     else
       {
         coeffs[offset] = 1;
       } /*if*/
+    return
+        coeff_bits;
   } /*make_bayer_slice*/
 
-static void make_bayer
+static uint make_bayer
   (
     uint order, /* must be power of 2 */
-    cpnt_t * coeffs /* array[order * order] */
+    uint * coeffs /* array[order * order] */
   )
   /* fills coeffs with a Bayer matrix of the specified order. */
   {
-    make_bayer_slice(order, coeffs, 0, order);
+    return
+        make_bayer_slice(order, coeffs, 0, order);
   } /*make_bayer*/
 
 /*
@@ -93,7 +98,7 @@ static PyObject * grainyx_bayer
   {
     uint order;
     PyObject * result = 0;
-    cpnt_t * coeffs = 0;
+    uint * coeffs = 0;
     PyObject * result_temp = 0;
     uint row, col;
     do /*once*/
@@ -105,7 +110,7 @@ static PyObject * grainyx_bayer
             PyErr_SetString(PyExc_ValueError, "order must be power of 2");
             break;
           } /*if*/
-        coeffs = calloc(order * order, sizeof(cpnt_t));
+        coeffs = calloc(order * order, sizeof(uint));
         if (coeffs == 0)
           {
             PyErr_NoMemory();
@@ -159,9 +164,9 @@ static PyObject * grainyx_ordered_dither
     PyObject * result = 0;
     cairo_surface_t * pix = 0;
     cairo_format_t pix_fmt;
-    uint new_depth, dither_order;
+    uint new_depth, dither_order, coeff_bits;
     bool do_a, do_r, do_g, do_b;
-    cpnt_t * coeffs = 0;
+    uint * coeffs = 0;
     do /*once*/
       {
           {
@@ -184,9 +189,9 @@ static PyObject * grainyx_ordered_dither
                     PyErr_Format(PyExc_ValueError, "depth cannot exceed %d", CPNT_BITS);
                     break;
                   } /*if*/
-                if (dither_order > CPNT_BITS / 2 or dither_order > 1 and (dither_order - 1 & dither_order) != 0)
+                if (dither_order > 1 and (dither_order - 1 & dither_order) != 0)
                   {
-                    PyErr_Format(PyExc_ValueError, "order must be power of 2 not greater than %d", CPNT_BITS / 2);
+                    PyErr_SetString(PyExc_ValueError, "order must be power of 2");
                     break;
                   } /*if*/
                 pix = (cairo_surface_t *)pixaddr;
@@ -231,13 +236,13 @@ static PyObject * grainyx_ordered_dither
             size_t stride;
             if (dither_order > 1)
               {
-                coeffs = calloc(dither_order * dither_order, sizeof(cpnt_t));
+                coeffs = calloc(dither_order * dither_order, sizeof(uint));
                 if (coeffs == 0)
                   {
                     PyErr_NoMemory();
                     break;
                   } /*if*/
-                make_bayer(dither_order, coeffs);
+                coeff_bits = make_bayer(dither_order, coeffs);
               } /*if*/
             Py_BEGIN_ALLOW_THREADS
             drop_bits = CPNT_BITS - new_depth;
@@ -260,14 +265,14 @@ static PyObject * grainyx_ordered_dither
                         pix_type val = pixel >> shift & CPNT_MAX; \
                         if (dither_order > 1) \
                           { \
-                            cpnt_t const threshold = coeffs[row % dither_order * dither_order + col % dither_order]; \
-                            cpnt_t frac = val & drop_mask; \
+                            uint const threshold = coeffs[row % dither_order * dither_order + col % dither_order]; \
+                            uint frac = val & drop_mask; \
                             frac = \
-                                drop_bits > dither_order ? \
-                                    frac >> drop_bits - dither_order \
+                                drop_bits > coeff_bits ? \
+                                    frac >> drop_bits - coeff_bits \
                                 : \
-                                    frac << dither_order - drop_bits; \
-                            frac = frac >= threshold ? CPNT_MAX : 0; \
+                                    frac << coeff_bits - drop_bits; \
+                            frac = frac > threshold ? CPNT_MAX : 0; \
                             val = val & keep_mask | frac & drop_mask; \
                           } \
                         else \
