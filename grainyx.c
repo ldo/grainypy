@@ -269,6 +269,13 @@ static PyObject * grainyx_ordered_dither
                 for (col = 0; col != width; ++col)
                   {
                     pix_type pixel = row_base[col];
+                  /* note: the following algorithm really only works correctly
+                    when new_depth = 1. Otherwise it will produce colours that
+                    are almost, but not quite, the same. This is because the
+                    threshold comparison can only produce one of 2 values for
+                    the bottommost rounded component bit. It needs to produce
+                    (1 << new_depth) different values, which will require that
+                    number of threshold coefficients at each pixel position. */
 #define cond_do(doit, shift) \
                     if (doit) \
                       { \
