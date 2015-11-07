@@ -274,8 +274,9 @@ static PyObject * grainyx_ordered_dither
                     are almost, but not quite, the same. This is because the
                     threshold comparison can only produce one of 2 values for
                     the bottommost rounded component bit. It needs to produce
-                    (1 << new_depth) different values, which will require that
-                    number of threshold coefficients at each pixel position. */
+                    (1 << new_depth) different values to map to all the rounded
+                    component bits. This will require that number of threshold
+                    coefficients at each pixel position. */
 #define cond_do(doit, shift) \
                     if (doit) \
                       { \
