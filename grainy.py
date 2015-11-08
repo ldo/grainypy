@@ -89,3 +89,21 @@ def cairo_component(pix, component) :
 #end cairo_component
 
 copy_channel = grainyx.copy_channel
+
+def copy_image_channel(src_img, src_component, dst_img, dst_component) :
+    "copies a specified component from a source image to a component of a destination" \
+    " image. src_image and dst_img must be qahirah.ImageSurface instances, while" \
+    " src_component and dst_component must be CAIRO_PIX.xxx values selecting" \
+    " the corresponding components."
+    if not isinstance(src_img, qahirah.ImageSurface) or not isinstance(dst_img, qahirah.ImageSurface) :
+        raise TypeError("src_img and dst_img must be qahirah.ImageSurface instances")
+    #end if
+    src_img.flush()
+    dst_img.flush()
+    copy_channel \
+      (
+        cairo_component(src_img, src_component), # src
+        cairo_component(dst_img, dst_component), # dst
+      )
+    dst_img.mark_dirty()
+#end copy_image_channel
