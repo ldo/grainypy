@@ -26,6 +26,16 @@ enum
 typedef uint32_t
     pix_type;
 
+typedef struct
+  { /* identifies a pixel component within a pixemap */
+    uint8_t * baseaddr; /* the base address of the pixels */
+    uint width, height; /* the dimensions of the pixmap in pixels */
+    uint depth; /* the number of bytes per pixel */
+    uint stride; /* the number of bytes per row of pixels */
+    uint shiftoffset; /* the offset in bits of the component from the bottom of the pixel */
+    uint bitwidth; /* the width in bits of the pixel component */
+  } channel;
+
 static uint make_bayer_slice
   (
     uint order,
@@ -85,6 +95,58 @@ static uint make_bayer
     return
         make_bayer_slice(order, coeffs, 0, order);
   } /*make_bayer*/
+
+static void get_channel
+  (
+    PyObject * desc,
+    channel * result
+  )
+  /* extracts the fields of desc, which is expected to be an instance of grainy.Channel.
+    Does some basic consistency checks, and returns the info in the fields of result. */
+  {
+    PyObject * val = 0;
+    do /*once*/
+      {
+        val = PyObject_GetAttrString(desc, "baseaddr");
+        if (PyErr_Occurred())
+            break;
+        result->baseaddr = (uint8_t *)PyLong_AsSize_t(val);
+        if (PyErr_Occurred())
+            break;
+#define get_field(name) \
+        Py_XDECREF(val); \
+        val = PyObject_GetAttrString(desc, #name); \
+        if (PyErr_Occurred()) \
+            break; \
+        result->name = PyLong_AsLong(val); \
+        if (PyErr_Occurred()) \
+            break;
+        get_field(width)
+        get_field(height)
+        get_field(depth)
+        get_field(stride)
+        get_field(shiftoffset)
+        get_field(bitwidth)
+#undef get_field
+        if (result->shiftoffset + result->bitwidth > result->depth * 8)
+          {
+            PyErr_SetString(PyExc_IndexError, "pixmap channel position is outside pixel");
+            break;
+          } /*if*/
+        if (result->width * result->depth > result->stride)
+          {
+            PyErr_SetString(PyExc_IndexError, "pixmap row width exceeds stride");
+            break;
+          } /*if*/
+        if (result->shiftoffset % 8 != 0 or result->bitwidth != 8)
+          {
+            PyErr_SetString(PyExc_ValueError, "only aligned single-byte channels currently supported");
+            break;
+          } /*if*/
+      }
+    while (false);
+    Py_XDECREF(val);
+  } /*get_channel*/
 
 /*
     User-visible stuff
@@ -322,6 +384,102 @@ static PyObject * grainyx_ordered_dither
         result;
   } /*grainyx_ordered_dither*/
 
+static PyObject * grainyx_copy_channel
+  (
+    PyObject * self,
+    PyObject * args
+  )
+  {
+    PyObject * result = 0;
+    channel src, dst;
+    do /*once*/
+      {
+          {
+            PyObject * srcobj = 0;
+            PyObject * dstobj = 0;
+            do /*once*/
+              {
+                if (not PyArg_ParseTuple(args, "OO", &srcobj, &dstobj))
+                    break;
+                Py_INCREF(srcobj);
+                Py_INCREF(dstobj);
+                get_channel(srcobj, &src);
+                if (PyErr_Occurred())
+                    break;
+                get_channel(dstobj, &dst);
+                if (PyErr_Occurred())
+                    break;
+              }
+            while (false);
+            Py_XDECREF(srcobj);
+            Py_XDECREF(dstobj);
+          }
+        if (PyErr_Occurred())
+            break;
+        if (src.width != dst.width or src.height != dst.height)
+          {
+            PyErr_SetString(PyExc_ValueError, "src/dst pixel dimensions mismatch");
+            break;
+          } /*if*/
+        if (src.bitwidth != dst.bitwidth)
+          {
+            PyErr_SetString(PyExc_ValueError, "change in channel depth not currently supported");
+            break;
+          } /*if*/
+        if (src.depth != 1 and src.depth != 4 or dst.depth != 1 and dst.depth != 4)
+          {
+            PyErr_SetString(PyExc_ValueError, "only pixel depths of 1 and 4 bytes currently supported");
+            break;
+          } /*if*/
+        Py_BEGIN_ALLOW_THREADS
+          {
+            uint row, col;
+            for (row = 0; row != src.height; ++row)
+              {
+                const uint8_t * const srcrow = src.baseaddr + row * src.stride;
+                uint8_t * const dstrow = dst.baseaddr + row * dst.stride;
+                for (col = 0; col != src.width; ++col)
+                  {
+                    uint val;
+                    if (src.depth == 4)
+                      {
+                        val =
+                                ((uint32_t *)srcrow)[col] >> src.shiftoffset
+                            &
+                                (1 << src.bitwidth) - 1;
+                      }
+                    else /* src.depth = 1 */
+                      {
+                      /* assume src.shiftoffset = 0 and src.bitwidth = 8 */
+                        val = srcrow[col];
+                      } /*if*/
+                    if (dst.depth == 4)
+                      {
+                        uint dstval = ((uint32_t *)dstrow)[col];
+                        dstval =
+                                dstval & ~((1 << dst.bitwidth) - 1 << dst.shiftoffset)
+                            |
+                                val << dst.shiftoffset;
+                        ((uint32_t *)dstrow)[col] = dstval;
+                      }
+                    else /* dst.depth = 1 */
+                      {
+                      /* assume dst.shiftoffset = 0 and dst.bitwidth = 8 */
+                        dstrow[col] = val;
+                      } /*if*/
+                  } /*for*/
+              } /*for*/
+          }
+        Py_END_ALLOW_THREADS
+      /* all successfully done */
+        Py_INCREF(Py_None);
+        result = Py_None;
+      }
+    while (false);
+    return
+        result;
+  } /*grainyx_copy_channel*/
+
 static PyMethodDef grainyx_methods[] =
   {
     {"bayer", grainyx_bayer, METH_VARARGS,
@@ -335,6 +493,12 @@ static PyMethodDef grainyx_methods[] =
         "reduces the pixels in pix, which must be a pointer to a cairo_surface_t"
         " of FORMAT_RGB24 or FORMAT_ARGB32, down to depth bits per component."
         " order is size of the dither matrix to use; it must be a power of 2."
+    },
+    {"copy_channel", grainyx_copy_channel, METH_VARARGS,
+        "copy_channel(src_channel, dst_channel)\n"
+        "copies the contents of one grainy.Channel instance to another. You may copy"
+        " between two channels of the same pixmap, but the pixmaps should not otherwise"
+        " overlap."
     },
     {0, 0, 0, 0} /* marks end of list */
   };
