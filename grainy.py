@@ -48,6 +48,81 @@ class CairoARGBChannel(Channel) :
 
 #end CairoARGBChannel
 
+class BayerMatrix :
+    "constructs a Bayer ordered-dither matrix. order must be a positive integer" \
+    " which is a power of 2. Useful values are 2, 4, 8 or 16. coeffs will be a tuple" \
+    " of all the constructed matrix elements, and bits will be the integer number of" \
+    " bits needed to hold one matrix element value."
+
+    __slots__ = ("bits", "coeffs", "order")
+
+    def __init__(self, order) :
+        # setting order = None is for internal use only
+        if order != None :
+            if not isinstance(order, int) or order < 1 or order - 1 & order != 0 :
+                raise ValueError("order must be a positive integer, being a power of 2")
+            #end if
+            if order > 2 :
+                suborder = order // 2
+                submat = BayerMatrix(suborder)
+                mult = BayerMatrix(2).coeffs
+                self.coeffs = tuple \
+                    (
+                        4 * submat.coeffs[row % suborder * suborder + col % suborder]
+                    +
+                        mult[row // suborder * 2 + col // suborder]
+                    for row in range(order)
+                    for col in range(order)
+                    )
+                self.bits = submat.bits + 2
+            elif order > 1 :
+                self.coeffs = (3, 1, 0, 2)
+                self.bits = 2
+            else :
+                self.coeffs = (1,)
+                self.bits = 1
+            #end if
+            self.order = order
+        #end if
+    #end __init__
+
+    def flip(self, x, y) :
+        "returns a copy of this BayerMatrix with the coefficients flipped along one or both" \
+        " axes. The x and y args are booleans indicating whether to flip along the corresponding" \
+        " axis."
+        result = BayerMatrix(None)
+        result.coeffs = tuple \
+            (
+            self.coeffs[(row, self.order - row - 1)[y] * self.order + (col, self.order - col - 1)[x]]
+            for row in range(self.order)
+            for col in range(self.order)
+            )
+        result.bits = self.bits
+        result.order = self.order
+        return \
+            result
+    #end flip
+
+    def rotate(self, x, y) :
+        "returns a copy of this BayerMatrix with the coefficients rotated by the specified" \
+        " number of steps along each axis. The x and y args are integers indicating the" \
+        " number of steps by which to rotate the coefficients along each axis; negative" \
+        " for left/up, positive for right/down."
+        result = BayerMatrix(None)
+        result.coeffs = tuple \
+            (
+            self.coeffs[(row + y) % self.order * self.order + (col + x) % self.order]
+            for row in range(self.order)
+            for col in range(self.order)
+            )
+        result.bits = self.bits
+        result.order = self.order
+        return \
+            result
+    #end rotate
+
+#end BayerMatrix
+
 def cairo_component(pix, component) :
     "pix must be a qahirah.ImageSurface instance, and component must be a CAIRO_PIX.xxx" \
     " value. returns a Channel instance for acccessing the specified component of the" \
