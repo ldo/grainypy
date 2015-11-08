@@ -48,6 +48,46 @@ class CairoARGBChannel(Channel) :
 
 #end CairoARGBChannel
 
+def cairo_component(pix, component) :
+    "pix must be a qahirah.ImageSurface instance, and component must be a CAIRO_PIX.xxx" \
+    " value. returns a Channel instance for acccessing the specified component of the" \
+    " image pixmap."
+    if not isinstance(pix, qahirah.ImageSurface) :
+        raise TypeError("pix must be a qahirah.ImageSurface")
+    #end if
+    args = \
+        {
+            "baseaddr" : pix.data,
+            "width" : pix.width,
+            "height" : pix.height,
+            "stride" : pix.stride,
+        }
+    construct = CairoARGBChannel
+    if pix.format == CAIRO.FORMAT_ARGB32 :
+        pass # fine
+    elif pix.format == CAIRO.FORMAT_RGB24 :
+        if component == CAIRO_PIX.A :
+            raise ValueError("no alpha component for FORMAT_RGB24")
+        #end if
+    elif pix.format == CAIRO.FORMAT_A8 :
+        if component != CAIRO_PIX.A :
+            raise ValueError("alpha component only for FORMAT_A8")
+        #end if
+        component = None
+        args["depth"] = 1
+        args["shiftoffset"] = 0
+        args["bitwidth"] = 8
+        construct = Channel
+    else :
+        raise TypeError("unsupported format for pix")
+    #end if
+    if component != None :
+        args["component"] = component
+    #end if
+    return \
+        construct(**args)
+#end cairo_component
+
 class DitherMatrix :
     "base class for a general ordered-dither matrix of dimension order * order."
     " coeffs should be a tuple of the non-negative integer matrix elements in row" \
@@ -134,46 +174,6 @@ class BayerMatrix(DitherMatrix) :
     #end __init__
 
 #end BayerMatrix
-
-def cairo_component(pix, component) :
-    "pix must be a qahirah.ImageSurface instance, and component must be a CAIRO_PIX.xxx" \
-    " value. returns a Channel instance for acccessing the specified component of the" \
-    " image pixmap."
-    if not isinstance(pix, qahirah.ImageSurface) :
-        raise TypeError("pix must be a qahirah.ImageSurface")
-    #end if
-    args = \
-        {
-            "baseaddr" : pix.data,
-            "width" : pix.width,
-            "height" : pix.height,
-            "stride" : pix.stride,
-        }
-    construct = CairoARGBChannel
-    if pix.format == CAIRO.FORMAT_ARGB32 :
-        pass # fine
-    elif pix.format == CAIRO.FORMAT_RGB24 :
-        if component == CAIRO_PIX.A :
-            raise ValueError("no alpha component for FORMAT_RGB24")
-        #end if
-    elif pix.format == CAIRO.FORMAT_A8 :
-        if component != CAIRO_PIX.A :
-            raise ValueError("alpha component only for FORMAT_A8")
-        #end if
-        component = None
-        args["depth"] = 1
-        args["shiftoffset"] = 0
-        args["bitwidth"] = 8
-        construct = Channel
-    else :
-        raise TypeError("unsupported format for pix")
-    #end if
-    if component != None :
-        args["component"] = component
-    #end if
-    return \
-        construct(**args)
-#end cairo_component
 
 copy_channel = grainyx.copy_channel
 
