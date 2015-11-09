@@ -5,6 +5,8 @@
 #-
 
 import enum
+from functools import \
+    reduce
 import qahirah
 from qahirah import \
     CAIRO
@@ -61,6 +63,16 @@ class CAIRO_PIX(enum.IntEnum) :
     " Note this is endian-independent."
     A, R, G, B = 3, 2, 1, 0
 #end CAIRO_PIX
+
+cairo_format_components = \
+    { # components present in each pixel format
+        CAIRO.FORMAT_ARGB32 : frozenset((CAIRO_PIX.A, CAIRO_PIX.R, CAIRO_PIX.G, CAIRO_PIX.B)),
+        CAIRO.FORMAT_RGB24 : frozenset((CAIRO_PIX.R, CAIRO_PIX.G, CAIRO_PIX.B)),
+        CAIRO.FORMAT_A8 : frozenset((CAIRO_PIX.A,)),
+        CAIRO.FORMAT_A1 : frozenset((CAIRO_PIX.A,)),
+        CAIRO.FORMAT_RGB16_565 : frozenset((CAIRO_PIX.R, CAIRO_PIX.G, CAIRO_PIX.B)),
+        CAIRO.FORMAT_RGB30 : frozenset((CAIRO_PIX.R, CAIRO_PIX.G, CAIRO_PIX.B)),
+    }
 
 class CairoARGBChannel(Channel) :
     "describes a pixel component for a CAIRO.FORMAT_RGB24 or CAIRO.FORMAT_ARGB32" \
@@ -203,6 +215,7 @@ class BayerMatrix(DitherMatrix) :
 
 copy_channel = grainyx.copy_channel
 ordered_dither = grainyx.ordered_dither
+channel_op = grainyx.channel_op
 
 def copy_image_channel(src_img, src_component, dst_img, dst_component) :
     "copies a specified component from a source image to a component of a destination" \
@@ -275,3 +288,52 @@ def ordered_dither_image(src_img, dst_img, depth, matrix, src_bounds, dst_bounds
       )
     dst_img.mark_dirty()
 #end ordered_dither_image
+
+def bool_channel_op(table, depth) :
+    "constructs a lookup table suitable for passing to channel_op. table must be" \
+    " a 4-tuple giving the destsination pixel bit value where the corresponding srcl" \
+    " and srcr pixel bit values are respectively (0, 0), (0, 1), (1, 0) and (1, 1)," \
+    " and depth is the number of bits per channel component."
+    return \
+        tuple \
+          (
+            reduce
+              (
+                lambda a, b : a | b,
+                tuple
+                  (
+                    (table[(pixl >> bitpos & 1) << 1 | pixr >> bitpos & 1] & 1) << bitpos
+                    for bitpos in range(depth)
+                  ),
+                0
+              )
+            for index in range(1 << depth * 2)
+            for pixl in (index >> depth,)
+            for pixr in (index & (1 << depth) - 1,)
+          )
+#end bool_channel_op
+
+def image_channel_op(op_table, srcl_img, srcr_img, dst_img) :
+    if (
+            not isinstance(srcl_img, qahirah.ImageSurface)
+        or
+            not isinstance(srcr_img, qahirah.ImageSurface)
+        or
+            not isinstance(dst_img, qahirah.ImageSurface)
+    ) :
+        raise TypeError("img args must be qahirah.ImageSurface instances")
+    #end if
+    srcl_img.flush()
+    srcr_img.flush()
+    dst_img.flush()
+    for component in cairo_format_components[srcl_img.format] :
+        channel_op \
+          (
+            op_table,
+            cairo_component(srcl_img, component),
+            cairo_component(srcr_img, component),
+            cairo_component(dst_img, component)
+          )
+    #end for
+    dst_img.mark_dirty()
+#end image_channel_op

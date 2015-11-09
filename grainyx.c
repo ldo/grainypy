@@ -29,7 +29,7 @@ typedef uint32_t
     pix_type;
 
 typedef struct
-  { /* identifies a pixel component within a pixemap */
+  { /* identifies a pixel component within a pixmap */
     uint8_t * baseaddr; /* the base address of the pixels */
     uint width, height; /* the dimensions of the pixmap in pixels */
     uint depth; /* the number of bytes per pixel */
@@ -41,13 +41,13 @@ typedef struct
 typedef struct
   {
     uint order, bits;
-    uint coeffs[/*order * order */];
+    uint coeffs[/*order * order*/];
   } dither_matrix_t;
 
 static bool get_channel
   (
     PyObject * desc,
-    bool required, /* desc cannot be None for no channel */
+    bool required, /* indicates desc cannot be None for no channel */
     channel_t * same_pix_as, /* if non-null, then result must have same baseaddr, width, height, stride and depth as this */
     channel_t * result
   )
@@ -66,7 +66,7 @@ static bool get_channel
             result->baseaddr = (uint8_t *)PyLong_AsSize_t(val);
             if (PyErr_Occurred())
                 break;
-    #define get_field(name) \
+#define get_field(name) \
             Py_XDECREF(val); \
             val = PyObject_GetAttrString(desc, #name); \
             if (PyErr_Occurred()) \
@@ -80,7 +80,7 @@ static bool get_channel
             get_field(stride)
             get_field(shiftoffset)
             get_field(bitwidth)
-    #undef get_field
+#undef get_field
             if (result->shiftoffset + result->bitwidth > result->depth * 8)
               {
                 PyErr_SetString(PyExc_IndexError, "pixmap channel position is outside pixel");
@@ -128,7 +128,7 @@ static bool get_channel
 static void get_dither_matrix
   (
     PyObject * obj,
-    bool required, /* obj cannot be None for no matrix */
+    bool required, /* indicates obj cannot be None for no matrix */
     dither_matrix_t ** mat
   )
   /* extracts the fields from a grainy.DitherMatrix instance and allocates and fills in
@@ -551,6 +551,167 @@ static PyObject * grainyx_copy_channel
         result;
   } /*grainyx_copy_channel*/
 
+static PyObject * grainyx_channel_op
+  (
+    PyObject * self,
+    PyObject * args
+  )
+  {
+    PyObject * result = 0;
+    cpnt_t * table = 0;
+    channel_t srcl, srcr, dst;
+    do /*once*/
+      {
+          {
+            PyObject * tableobj = 0;
+            PyObject * srclobj = 0;
+            PyObject * srcrobj = 0;
+            PyObject * dstobj = 0;
+            uint table_size, index;
+            do /*once*/
+              {
+                if (not PyArg_ParseTuple(args, "OOOO", &tableobj, &srclobj, &srcrobj, &dstobj))
+                    break;
+                Py_INCREF(tableobj);
+                Py_INCREF(srclobj);
+                Py_INCREF(srcrobj);
+                Py_INCREF(dstobj);
+                get_channel(srclobj, true, 0, &srcl);
+                if (PyErr_Occurred())
+                    break;
+                get_channel(srcrobj, true, 0, &srcr);
+                if (PyErr_Occurred())
+                    break;
+                get_channel(dstobj, true, 0, &dst);
+                if (PyErr_Occurred())
+                    break;
+                if
+                  (
+                        srcl.width != srcr.width or srcr.width != dst.width
+                    or
+                        srcl.height != srcr.height or srcr.height != dst.height
+                    or
+                        srcl.bitwidth != srcr.bitwidth or srcr.bitwidth != dst.bitwidth
+                  )
+                  {
+                    PyErr_SetString
+                      (
+                        PyExc_ValueError,
+                        "srcl, srcr and dst must all have same width, height and bitwidth"
+                      );
+                    break;
+                  } /*if*/
+                if (srcl.bitwidth > CPNT_BITS)
+                  {
+                    PyErr_Format(PyExc_ValueError, "bitwidth cannot exceed %d for now", CPNT_BITS);
+                    break;
+                  } /*if*/
+                if
+                  (
+                        srcl.depth != 1 and srcl.depth != 4
+                    or
+                        srcr.depth != 1 and srcr.depth != 4
+                    or
+                        dst.depth != 1 and dst.depth != 4
+                  )
+                  {
+                    PyErr_SetString(PyExc_ValueError, "only pixel depths of 1 and 4 bytes currently supported");
+                    break;
+                  } /*if*/
+                table_size = 1 << srcl.bitwidth * 2;
+                table = calloc(table_size, sizeof(cpnt_t));
+                if (table == 0)
+                  {
+                    PyErr_NoMemory();
+                    break;
+                  } /*if*/
+                for (index = 0;;)
+                  {
+                    if (index == table_size)
+                        break;
+                    PyObject * const elt = PyTuple_GetItem(tableobj, index);
+                      /* borrowed reference, valid as long as tableobj is valid */
+                    if (PyErr_Occurred())
+                        break;
+                    table[index] = PyLong_AsUnsignedLong(elt);
+                    if (PyErr_Occurred())
+                        break;
+                    ++index;
+                  } /*for*/
+                if (PyErr_Occurred())
+                    break;
+              }
+            while (false);
+            Py_XDECREF(tableobj);
+            Py_XDECREF(srclobj);
+            Py_XDECREF(srcrobj);
+            Py_XDECREF(dstobj);
+          }
+        if (PyErr_Occurred())
+            break;
+        Py_BEGIN_ALLOW_THREADS
+          {
+            const uint srclmask = (1 << srcl.bitwidth) - 1;
+            const uint srcrmask = (1 << srcr.bitwidth) - 1;
+            const uint dstmask = (1 << dst.bitwidth) - 1 << dst.shiftoffset;
+            uint row, col;
+            for (row = 0; row != srcl.height; ++row)
+              {
+                const cpnt_t * const srclrow = srcl.baseaddr + row * srcl.stride;
+                const cpnt_t * const srcrrow = srcr.baseaddr + row * srcr.stride;
+                cpnt_t * const dstrow = dst.baseaddr + row * dst.stride;
+                for (col = 0; col != srcl.width; ++col)
+                  {
+                    const uint srclpix =
+                        srcl.depth == 4 ?
+                            ((uint32_t *)srclrow)[col]
+                        : /* srcl.depth = 1 */
+                            srclrow[col];
+                    const uint srcrpix =
+                        srcr.depth == 4 ?
+                            ((uint32_t *)srcrrow)[col]
+                        : /* srcr.depth = 1 */
+                            srcrrow[col];
+                    uint dstpix =
+                        dst.depth == 4 ?
+                            ((uint32_t *)dstrow)[col]
+                        : /* dst.depth = 1 */
+                            dstrow[col];
+                    dstpix =
+                            dstpix & ~dstmask
+                        |
+                                    table
+                                        [
+                                            (srclpix >> srcl.shiftoffset & srclmask) << srcl.bitwidth
+                                        |
+                                            srcrpix >> srcr.shiftoffset & srcrmask
+                                        ]
+                                <<
+                                    dst.shiftoffset
+                            &
+                                dstmask;
+                    if (dst.depth == 4)
+                      {
+                        ((uint32_t *)dstrow)[col] = dstpix;
+                      }
+                   else /* dst.depth = 1 */
+                     {
+                        dstrow[col] = dstpix;
+                     } /*if*/
+                  } /*for*/
+              } /*for*/
+          }
+        Py_END_ALLOW_THREADS
+      /* all successfully done */
+        Py_INCREF(Py_None);
+        result = Py_None;
+      }
+    while (false);
+    free(table);
+    return
+        result;
+  } /*grainyx_channel_op*/
+
 static PyMethodDef grainyx_methods[] =
   {
     {"ordered_dither", grainyx_ordered_dither, METH_VARARGS,
@@ -562,9 +723,17 @@ static PyMethodDef grainyx_methods[] =
     },
     {"copy_channel", grainyx_copy_channel, METH_VARARGS,
         "copy_channel(src_channel, dst_channel)\n"
-        "copies the contents of one grainy.Channel instance to another. You may copy"
+        "copies the contents of one Channel instance to another. You may copy"
         " between two channels of the same pixmap, but the pixmaps should not otherwise"
         " overlap."
+    },
+    {"channel_op", grainyx_channel_op, METH_VARARGS,
+        "channel_op(table, srcl, srcr, dst)\n"
+        "performs a general functional operation on component values from srcl and srcr,"
+        " putting the result into dst, all three being Channel instances with the same"
+        " width, height and bitwidth. table is a tuple of integers, being the new component"
+        " values. It is indexed by srcl_component << bitwidth | srcr_component, so its size"
+        " must be 1 << 2 * bitwidth."
     },
     {0, 0, 0, 0} /* marks end of list */
   };
