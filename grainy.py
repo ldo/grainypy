@@ -176,13 +176,18 @@ class BayerMatrix(DitherMatrix) :
 #end BayerMatrix
 
 copy_channel = grainyx.copy_channel
+ordered_dither = grainyx.ordered_dither
 
 def copy_image_channel(src_img, src_component, dst_img, dst_component) :
     "copies a specified component from a source image to a component of a destination" \
     " image. src_image and dst_img must be qahirah.ImageSurface instances, while" \
     " src_component and dst_component must be CAIRO_PIX.xxx values selecting" \
     " the corresponding components."
-    if not isinstance(src_img, qahirah.ImageSurface) or not isinstance(dst_img, qahirah.ImageSurface) :
+    if (
+            not isinstance(src_img, qahirah.ImageSurface)
+        or
+            not isinstance(dst_img, qahirah.ImageSurface)
+    ) :
         raise TypeError("src_img and dst_img must be qahirah.ImageSurface instances")
     #end if
     src_img.flush()
@@ -194,3 +199,47 @@ def copy_image_channel(src_img, src_component, dst_img, dst_component) :
       )
     dst_img.mark_dirty()
 #end copy_image_channel
+
+def ordered_dither_image(src_img, dst_img, depth, matrix, do_a, do_r, do_g, do_b) :
+    "dithers src_image into the corresponding components of dst_img using the specified" \
+    " DitherMatrix, according to the booleans do_a, do_r, do_g and do_b. src_img and dst_img" \
+    " may be the same image."
+    if (
+            not isinstance(src_img, qahirah.ImageSurface)
+        or
+            not isinstance(dst_img, qahirah.ImageSurface)
+    ) :
+        raise TypeError("src_img and dst_img must be qahirah.ImageSurface instances")
+    #end if
+    src_img.flush()
+    dst_img.flush()
+    srcchan = [None] * 4
+    dstchan = [None] * 4
+    nr_components = 0
+    for \
+        doit, component \
+    in \
+        (
+            (do_a, CAIRO_PIX.A),
+            (do_r, CAIRO_PIX.R),
+            (do_g, CAIRO_PIX.G),
+            (do_b, CAIRO_PIX.B),
+        ) \
+    :
+        if doit :
+            srcchan[nr_components] = cairo_component(src_img, component)
+            dstchan[nr_components] = cairo_component(dst_img, component)
+            nr_components += 1
+        #end if
+    #end for
+    ordered_dither \
+      (
+        matrix,
+        depth,
+        srcchan[0], dstchan[0],
+        srcchan[1], dstchan[1],
+        srcchan[2], dstchan[2],
+        srcchan[3], dstchan[3],
+      )
+    dst_img.mark_dirty()
+#end ordered_dither_image

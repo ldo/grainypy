@@ -3,7 +3,6 @@
 */
 
 #include <iso646.h>
-#include <cairo/cairo.h>
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <stdbool.h>
@@ -34,198 +33,173 @@ typedef struct
     uint stride; /* the number of bytes per row of pixels */
     uint shiftoffset; /* the offset in bits of the component from the bottom of the pixel */
     uint bitwidth; /* the width in bits of the pixel component */
-  } channel;
+  } channel_t;
 
-static uint make_bayer_slice
-  (
-    uint order,
-    uint * coeffs,
-    uint offset,
-    uint stride
-  )
-  /* recursively constructs a submatrix of a Bayer matrix. */
+typedef struct
   {
-    static const uint d2[4] = {3, 1, 0, 2};
-    uint coeff_bits;
-    if (order > 1)
-      {
-        if (order > 2)
-          {
-            uint row, col;
-            make_bayer_slice(order / 2, coeffs, offset, stride);
-            make_bayer_slice(order / 2, coeffs, offset + order / 2, stride);
-            make_bayer_slice(order / 2, coeffs, offset + order / 2 * stride, stride);
-            coeff_bits = make_bayer_slice(order / 2, coeffs, offset + order / 2 * (stride + 1), stride) + 2;
-            for (row = 0; row != order; ++row)
-              {
-                for (col = 0; col != order; ++col)
-                  {
-                    coeffs[offset + row * stride + col] =
-                            4 * coeffs[offset + row * stride + col]
-                        +
-                            d2[(row * 2 / order) * 2 + col * 2 / order];
-                  } /*for*/
-              } /*for*/
-          }
-        else
-          {
-            coeffs[offset] = d2[0];
-            coeffs[offset + 1] = d2[1];
-            coeffs[offset + stride] = d2[2];
-            coeffs[offset + stride + 1] = d2[3];
-            coeff_bits = 2;
-          } /*if*/
-      }
-    else
-      {
-        coeffs[offset] = 1;
-        coeff_bits = 1;
-      } /*if*/
-    return
-        coeff_bits;
-  } /*make_bayer_slice*/
+    uint order, bits;
+    uint coeffs[/*order * order */];
+  } dither_matrix_t;
 
-static uint make_bayer
-  (
-    uint order, /* must be power of 2 */
-    uint * coeffs /* array[order * order] */
-  )
-  /* fills coeffs with a Bayer matrix of the specified order. */
-  {
-    return
-        make_bayer_slice(order, coeffs, 0, order);
-  } /*make_bayer*/
-
-static void get_channel
+static bool get_channel
   (
     PyObject * desc,
-    channel * result
+    bool required, /* desc cannot be None for no channel */
+    channel_t * same_pix_as, /* if non-null, then result must have same baseaddr, width, height, stride and depth as this */
+    channel_t * result
   )
   /* extracts the fields of desc, which is expected to be an instance of grainy.Channel.
     Does some basic consistency checks, and returns the info in the fields of result. */
   {
-    PyObject * val = 0;
-    do /*once*/
+    bool got_channel = false; /* to begin with */
+    if (required or desc != 0 and desc != Py_None)
       {
-        val = PyObject_GetAttrString(desc, "baseaddr");
-        if (PyErr_Occurred())
-            break;
-        result->baseaddr = (uint8_t *)PyLong_AsSize_t(val);
-        if (PyErr_Occurred())
-            break;
-#define get_field(name) \
-        Py_XDECREF(val); \
-        val = PyObject_GetAttrString(desc, #name); \
-        if (PyErr_Occurred()) \
-            break; \
-        result->name = PyLong_AsLong(val); \
-        if (PyErr_Occurred()) \
-            break;
-        get_field(width)
-        get_field(height)
-        get_field(depth)
-        get_field(stride)
-        get_field(shiftoffset)
-        get_field(bitwidth)
-#undef get_field
-        if (result->shiftoffset + result->bitwidth > result->depth * 8)
+        PyObject * val = 0;
+        do /*once*/
           {
-            PyErr_SetString(PyExc_IndexError, "pixmap channel position is outside pixel");
-            break;
-          } /*if*/
-        if (result->width * result->depth > result->stride)
-          {
-            PyErr_SetString(PyExc_IndexError, "pixmap row width exceeds stride");
-            break;
-          } /*if*/
-        if (result->shiftoffset % 8 != 0 or result->bitwidth != 8)
-          {
-            PyErr_SetString(PyExc_ValueError, "only aligned single-byte channels currently supported");
-            break;
-          } /*if*/
+            val = PyObject_GetAttrString(desc, "baseaddr");
+            if (PyErr_Occurred())
+                break;
+            result->baseaddr = (uint8_t *)PyLong_AsSize_t(val);
+            if (PyErr_Occurred())
+                break;
+    #define get_field(name) \
+            Py_XDECREF(val); \
+            val = PyObject_GetAttrString(desc, #name); \
+            if (PyErr_Occurred()) \
+                break; \
+            result->name = PyLong_AsLong(val); \
+            if (PyErr_Occurred()) \
+                break;
+            get_field(width)
+            get_field(height)
+            get_field(depth)
+            get_field(stride)
+            get_field(shiftoffset)
+            get_field(bitwidth)
+    #undef get_field
+            if (result->shiftoffset + result->bitwidth > result->depth * 8)
+              {
+                PyErr_SetString(PyExc_IndexError, "pixmap channel position is outside pixel");
+                break;
+              } /*if*/
+            if (result->width * result->depth > result->stride)
+              {
+                PyErr_SetString(PyExc_IndexError, "pixmap row width exceeds stride");
+                break;
+              } /*if*/
+            if (result->shiftoffset % 8 != 0 or result->bitwidth != 8)
+              {
+                PyErr_SetString(PyExc_ValueError, "only aligned single-byte channels currently supported");
+                break;
+              } /*if*/
+            if
+              (
+                    same_pix_as != 0
+                and
+                    (
+                        result->baseaddr != same_pix_as->baseaddr
+                    or
+                        result->width != same_pix_as->width
+                    or
+                        result->height != same_pix_as->height
+                    or
+                        result->stride != same_pix_as->stride
+                    or
+                        result->depth != same_pix_as->depth
+                    )
+              )
+              {
+                PyErr_SetString(PyExc_ValueError, "inconsistent pixmap for channel");
+                break;
+              } /*if*/
+            got_channel = true;
+          }
+        while (false);
+        Py_XDECREF(val);
       }
-    while (false);
-    Py_XDECREF(val);
+    return
+        got_channel;
   } /*get_channel*/
+
+static void get_dither_matrix
+  (
+    PyObject * obj,
+    bool required, /* obj cannot be None for no matrix */
+    dither_matrix_t ** mat
+  )
+  /* extracts the fields from a grainy.DitherMatrix instance and allocates and fills in
+    a new dither_matrix_t structure with the results. */
+  {
+    *mat = 0; /* to begin with */
+    if (required or obj != 0 and obj != Py_None)
+      {
+        dither_matrix_t * result = 0;
+        PyObject * field = 0;
+        uint order, row, col;
+        do /*once*/
+          {
+            field = PyObject_GetAttrString(obj, "order");
+            if (PyErr_Occurred())
+                break;
+            order = PyLong_AsUnsignedLong(field);
+            if (PyErr_Occurred())
+                break;
+            result = malloc(sizeof(dither_matrix_t) + sizeof(uint) * order * order);
+            if (result == 0)
+              {
+                PyErr_NoMemory();
+                break;
+              } /*if*/
+            result->order = order;
+            Py_XDECREF(field);
+            field = PyObject_GetAttrString(obj, "bits");
+            if (PyErr_Occurred())
+                break;
+            result->bits = PyLong_AsUnsignedLong(field);
+            if (PyErr_Occurred())
+                break;
+            Py_XDECREF(field);
+            field = PyObject_GetAttrString(obj, "coeffs");
+            if (PyErr_Occurred())
+                break;
+            for (row = 0;;)
+              {
+                if  (row == order)
+                    break;
+                for (col = 0;;)
+                  {
+                    if (col == order)
+                        break;
+                    const uint index = row * order + col;
+                    PyObject * const elt = PyTuple_GetItem(field, index);
+                      /* borrowed reference, valid as long as field is valid */
+                    if (PyErr_Occurred())
+                        break;
+                    result->coeffs[index] = PyLong_AsUnsignedLong(elt);
+                    if (PyErr_Occurred())
+                        break;
+                    ++col;
+                  } /*for*/
+                if (PyErr_Occurred())
+                    break;
+                ++row;
+              } /*for*/
+            if (PyErr_Occurred())
+                break;
+          /* all done */
+            *mat = result;
+            result = 0; /* so I don't dispose of it yet */
+          }
+        while (false);
+        free(result);
+        Py_XDECREF(field);
+      } /*if*/
+  } /*get_dither_matrix*/
 
 /*
     User-visible stuff
 */
-
-static PyObject * grainyx_bayer
-  (
-    PyObject * self,
-    PyObject * args
-  )
-  {
-    uint order;
-    PyObject * result = 0;
-    uint * coeffs = 0;
-    uint coeff_bits;
-    PyObject * coeffs_tuple = 0;
-    PyObject * result_tuple = 0;
-    uint row, col;
-    do /*once*/
-      {
-        if (not PyArg_ParseTuple(args, "I", &order))
-            break;
-        if (order == 0 or (order - 1 & order) != 0)
-          {
-            PyErr_SetString(PyExc_ValueError, "order must be power of 2");
-            break;
-          } /*if*/
-        coeffs = calloc(order * order, sizeof(uint));
-        if (coeffs == 0)
-          {
-            PyErr_NoMemory();
-            break;
-          } /*if*/
-        coeff_bits = make_bayer(order, coeffs);
-        coeffs_tuple = PyTuple_New(order * order);
-        if (coeffs_tuple == 0)
-            break;
-        for (row = 0;;)
-          {
-            if (row == order)
-                break;
-            for (col = 0;;)
-              {
-                if (col == order)
-                    break;
-                PyTuple_SET_ITEM
-                  (
-                    coeffs_tuple,
-                    row * order + col,
-                    PyLong_FromLong(coeffs[row * order + col])
-                  );
-                if (PyErr_Occurred())
-                    break;
-                ++col;
-              } /*for*/
-            if (PyErr_Occurred())
-                break;
-            ++row;
-          } /*for*/
-        if (PyErr_Occurred())
-            break;
-        result_tuple = PyTuple_New(2);
-        if (result_tuple == 0)
-            break;
-        PyTuple_SET_ITEM(result_tuple, 0, PyLong_FromLong(coeff_bits));
-        if (PyErr_Occurred())
-            break;
-        PyTuple_SET_ITEM(result_tuple, 1, coeffs_tuple);
-        coeffs_tuple = 0; /* so I don't dispose of it yet */
-      /* all done */
-        result = result_tuple;
-        result_tuple = 0; /* so I don't free it yet */
-      }
-    while (false);
-    Py_XDECREF(coeffs_tuple);
-    free(coeffs);
-    return
-        result;
-  } /*grainyx_bayer*/
 
 static PyObject * grainyx_ordered_dither
   (
@@ -234,16 +208,24 @@ static PyObject * grainyx_ordered_dither
   )
   {
     PyObject * result = 0;
-    cairo_surface_t * pix = 0;
-    cairo_format_t pix_fmt;
-    uint new_depth, dither_order, coeff_bits;
-    bool do_a, do_r, do_g, do_b;
-    uint * coeffs = 0;
+    dither_matrix_t * dither = 0;
+    uint to_depth;
+    channel_t srcchan1, dstchan1, srcchan2, dstchan2, srcchan3, dstchan3, srcchan4, dstchan4;
+    bool gotchan1, gotchan2, gotchan3, gotchan4;
+    channel_t * some_src;
+    channel_t * some_dst;
     do /*once*/
       {
-          {
-            unsigned long pixaddr; /* why is there no Py_size_t? */
-            uint i_do_a, i_do_r, i_do_g, i_do_b;
+          { /* get args */
+            PyObject * matrixobj = 0;
+            PyObject * srcchan1obj = 0;
+            PyObject * dstchan1obj = 0;
+            PyObject * srcchan2obj = 0;
+            PyObject * dstchan2obj = 0;
+            PyObject * srcchan3obj = 0;
+            PyObject * dstchan3obj = 0;
+            PyObject * srcchan4obj = 0;
+            PyObject * dstchan4obj = 0;
             do /*once*/
               {
                 if
@@ -251,107 +233,192 @@ static PyObject * grainyx_ordered_dither
                     not PyArg_ParseTuple
                       (
                         args,
-                        "kIIpppp",
-                        &pixaddr, &new_depth, &dither_order, &i_do_a,  &i_do_r, &i_do_g, &i_do_b
+                        "OIOO|OOOOOO",
+                        &matrixobj,
+                        &to_depth,
+                        &srcchan1obj, &dstchan1obj,
+                        &srcchan2obj, &dstchan2obj,
+                        &srcchan3obj, &dstchan3obj,
+                        &srcchan4obj, &dstchan4obj
                       )
                   )
                     break;
-                if (new_depth > CPNT_BITS)
+              /* replace omitted arguments with None to simplify checks */
+                if (srcchan2obj == 0)
                   {
-                    PyErr_Format(PyExc_ValueError, "depth cannot exceed %d", CPNT_BITS);
+                    Py_INCREF(Py_None);
+                    srcchan2obj = Py_None;
+                  } /*if*/
+                if (dstchan2obj == 0)
+                  {
+                    Py_INCREF(Py_None);
+                    dstchan2obj = Py_None;
+                  } /*if*/
+                if (srcchan3obj == 0)
+                  {
+                    Py_INCREF(Py_None);
+                    srcchan3obj = Py_None;
+                  } /*if*/
+                if (dstchan3obj == 0)
+                  {
+                    Py_INCREF(Py_None);
+                    dstchan3obj = Py_None;
+                  } /*if*/
+                if (srcchan4obj == 0)
+                  {
+                    Py_INCREF(Py_None);
+                    srcchan4obj = Py_None;
+                  } /*if*/
+                if (dstchan4obj == 0)
+                  {
+                    Py_INCREF(Py_None);
+                    dstchan4obj = Py_None;
+                  } /*if*/
+                if
+                  (
+                        (srcchan1obj != Py_None) != (dstchan1obj != Py_None)
+                    or
+                        (srcchan2obj != Py_None) != (dstchan2obj != Py_None)
+                    or
+                        (srcchan3obj != Py_None) != (dstchan3obj != Py_None)
+                    or
+                        (srcchan4obj != Py_None) != (dstchan4obj != Py_None)
+                  )
+                  {
+                    PyErr_SetString
+                      (
+                        PyExc_ValueError,
+                        "src and dst channels must be specified/omitted in pairs"
+                      );
                     break;
                   } /*if*/
-                if (dither_order > 1 and (dither_order - 1 & dither_order) != 0)
+                get_dither_matrix(matrixobj, false, &dither);
+                if (PyErr_Occurred())
+                    break;
+                some_src = 0;
+                some_dst = 0;
+                gotchan1 = get_channel(srcchan1obj, false, 0, &srcchan1);
+                if (PyErr_Occurred())
+                    break;
+                if (gotchan1)
                   {
-                    PyErr_SetString(PyExc_ValueError, "order must be power of 2");
+                    get_channel(dstchan1obj, true, 0, &dstchan1);
+                    if (PyErr_Occurred())
+                        break;
+                    some_src = &srcchan1;
+                    some_dst = &dstchan1;
+                  } /*if*/
+                gotchan2 = get_channel(srcchan2obj, false, some_src, &srcchan2);
+                if (PyErr_Occurred())
+                    break;
+                if (gotchan2)
+                  {
+                    get_channel(dstchan2obj, true, some_dst, &dstchan2);
+                    if (PyErr_Occurred())
+                        break;
+                    some_src = &srcchan2; /* in case not already set */
+                    some_dst = &dstchan2;
+                  } /*if*/
+                gotchan3 = get_channel(srcchan3obj, false, some_src, &srcchan3);
+                if (PyErr_Occurred())
+                    break;
+                if (gotchan3)
+                  {
+                    get_channel(dstchan3obj, true, some_dst, &dstchan3);
+                    if (PyErr_Occurred())
+                        break;
+                    some_src = &srcchan3; /* in case not already set */
+                    some_dst = &dstchan3;
+                  } /*if*/
+                gotchan4 = get_channel(srcchan4obj, false, some_src, &srcchan4);
+                if (PyErr_Occurred())
+                    break;
+                if (gotchan4)
+                  {
+                    get_channel(dstchan4obj, true, some_dst, &dstchan4);
+                    if (PyErr_Occurred())
+                        break;
+                    some_src = &srcchan4; /* in case not already set */
+                    some_dst = &dstchan4;
+                  } /*if*/
+                if
+                  (
+                       (gotchan1 or gotchan2 or gotchan3 or gotchan4)
+                   and
+                        (some_src->width != some_dst->width or some_src->height != some_dst->height)
+                  )
+                  {
+                    PyErr_SetString
+                      (
+                        PyExc_ValueError,
+                        "src and dst channel pixmaps must have same dimensions"
+                      );
                     break;
                   } /*if*/
-                pix = (cairo_surface_t *)pixaddr;
-                cairo_surface_reference(pix);
-                if (cairo_surface_get_type(pix) != CAIRO_SURFACE_TYPE_IMAGE)
-                  {
-                    PyErr_SetString(PyExc_TypeError, "not an image surface");
-                    break;
-                  } /*if*/
-                pix_fmt = cairo_image_surface_get_format(pix);
-                if (pix_fmt != CAIRO_FORMAT_ARGB32 and pix_fmt != CAIRO_FORMAT_RGB24)
-                  {
-                    PyErr_SetString(PyExc_TypeError, "unsupported image surface format");
-                    break;
-                  } /*if*/
-                do_a = i_do_a;
-                if (do_a and pix_fmt != CAIRO_FORMAT_ARGB32)
-                  {
-                    PyErr_SetString(PyExc_TypeError, "cannot do_a with no alpha");
-                    break;
-                  } /*if*/
-                do_r = i_do_r;
-                do_g = i_do_g;
-                do_b = i_do_b;
               }
             while (false);
+            Py_XDECREF(matrixobj);
+            Py_XDECREF(srcchan1obj);
+            Py_XDECREF(dstchan1obj);
+            Py_XDECREF(srcchan2obj);
+            Py_XDECREF(dstchan2obj);
+            Py_XDECREF(srcchan3obj);
+            Py_XDECREF(dstchan3obj);
+            Py_XDECREF(srcchan4obj);
+            Py_XDECREF(dstchan4obj);
           }
         if (PyErr_Occurred())
             break;
-        if (not (do_a or do_r or do_g or do_b) or new_depth == CPNT_BITS)
+        if (not (gotchan1 or gotchan2 or gotchan3 or gotchan4) or to_depth == CPNT_BITS)
           {
           /* nothing to do */
             Py_INCREF(Py_None);
             result = Py_None; /* return success */
             break;
           } /*if*/
-          {
-            uint drop_bits;
-            cpnt_t * pix_base;
-            uint width, height, row, col;
-            cpnt_t drop_mask, keep_mask;
-            size_t stride;
-            if (dither_order > 1)
-              {
-                coeffs = calloc(dither_order * dither_order, sizeof(uint));
-                if (coeffs == 0)
-                  {
-                    PyErr_NoMemory();
-                    break;
-                  } /*if*/
-                coeff_bits = make_bayer(dither_order, coeffs);
-              } /*if*/
+        /* assert some_src and some_dst both not null */
+          { /* do the work */
             Py_BEGIN_ALLOW_THREADS
-            drop_bits = CPNT_BITS - new_depth;
+            uint drop_bits;
+            const uint width = some_src->width;
+            const uint height = some_src->height;
+            const uint8_t * const src_pix_base = some_src->baseaddr;
+            uint8_t * const dst_pix_base = some_dst->baseaddr;
+            uint row, col;
+            cpnt_t drop_mask, keep_mask;
+            drop_bits = CPNT_BITS - to_depth;
             drop_mask = (1 << drop_bits) - 1;
             keep_mask = ~drop_mask;
-            cairo_surface_flush(pix);
-            pix_base = cairo_image_surface_get_data(pix);
-            stride = cairo_image_surface_get_stride(pix);
-            width = cairo_image_surface_get_width(pix);
-            height = cairo_image_surface_get_height(pix);
             for (row = 0; row != height; ++row)
               {
-                pix_type * const row_base = (pix_type *)(pix_base + row * stride);
+              /* FIXME: currently always assuming pixel depth is 4 and bitwidth is 8! */
+                const pix_type * const src_row_base = (const pix_type *)(src_pix_base + row * some_src->stride);
+                pix_type * const dst_row_base = (pix_type *)(dst_pix_base + row * some_dst->stride);
                 for (col = 0; col != width; ++col)
                   {
-                    pix_type pixel = row_base[col];
+                    pix_type const srcpixel = src_row_base[col];
+                    pix_type dstpixel = dst_row_base[col];
                   /* note: the following algorithm really only works correctly
-                    when new_depth = 1. Otherwise it will produce colours that
+                    when to_depth = 1. Otherwise it will produce colours that
                     are almost, but not quite, the same. This is because the
                     threshold comparison can only produce one of 2 values for
                     the bottommost rounded component bit. It needs to produce
-                    (1 << new_depth) different values to map to all the rounded
+                    (1 << to_depth) different values to map to all the rounded
                     component bits. This will require that number of threshold
                     coefficients at each pixel position. */
-#define cond_do(doit, shift) \
-                    if (doit) \
+#define cond_do(gotchan, srcchan, dstchan) \
+                    if (gotchan) \
                       { \
-                        pix_type val = pixel >> shift & CPNT_MAX; \
-                        if (dither_order > 1) \
+                        pix_type val = srcpixel >> srcchan.shiftoffset & CPNT_MAX; \
+                        if (dither->order > 1) \
                           { \
-                            uint const threshold = coeffs[row % dither_order * dither_order + col % dither_order]; \
+                            uint const threshold = dither->coeffs[row % dither->order * dither->order + col % dither->order]; \
                             uint frac = val & (drop_mask << 1) + 1; \
                             frac = \
-                                drop_bits > coeff_bits ? \
-                                    frac >> drop_bits - coeff_bits \
+                                drop_bits > dither->bits ? \
+                                    frac >> drop_bits - dither->bits \
                                 : \
-                                    frac << coeff_bits - drop_bits; \
+                                    frac << dither->bits - drop_bits; \
                             frac = frac > threshold ? CPNT_MAX : 0; \
                             val = val & keep_mask | frac & drop_mask; \
                           } \
@@ -360,17 +427,16 @@ static PyObject * grainyx_ordered_dither
                             val = (val & keep_mask) * CPNT_MAX / (CPNT_MAX - drop_mask); \
                               /* normalize truncated value to full brightness */ \
                           } /*if*/ \
-                        pixel = pixel & ~(CPNT_MAX << shift) | val << shift; \
+                        dstpixel = dstpixel & ~(CPNT_MAX << dstchan.shiftoffset) | val << dstchan.shiftoffset; \
                       } /*if*/
-                    cond_do(do_a, 3 * CPNT_BITS)
-                    cond_do(do_r, 2 * CPNT_BITS)
-                    cond_do(do_g, CPNT_BITS)
-                    cond_do(do_b, 0)
+                    cond_do(gotchan1, srcchan1, dstchan1)
+                    cond_do(gotchan2, srcchan2, dstchan2)
+                    cond_do(gotchan3, srcchan3, dstchan3)
+                    cond_do(gotchan4, srcchan4, dstchan4)
 #undef cond_do
-                    row_base[col] = pixel;
+                    dst_row_base[col] = dstpixel;
                   } /*for*/
               } /*for*/
-            cairo_surface_mark_dirty(pix);
             Py_END_ALLOW_THREADS
           }
       /* all successfully done */
@@ -378,8 +444,7 @@ static PyObject * grainyx_ordered_dither
         result = Py_None;
       }
     while (false);
-    free(coeffs);
-    cairo_surface_destroy(pix);
+    free(dither);
     return
         result;
   } /*grainyx_ordered_dither*/
@@ -391,7 +456,7 @@ static PyObject * grainyx_copy_channel
   )
   {
     PyObject * result = 0;
-    channel src, dst;
+    channel_t src, dst;
     do /*once*/
       {
           {
@@ -403,10 +468,10 @@ static PyObject * grainyx_copy_channel
                     break;
                 Py_INCREF(srcobj);
                 Py_INCREF(dstobj);
-                get_channel(srcobj, &src);
+                get_channel(srcobj, true, 0, &src);
                 if (PyErr_Occurred())
                     break;
-                get_channel(dstobj, &dst);
+                get_channel(dstobj, true, 0, &dst);
                 if (PyErr_Occurred())
                     break;
               }
@@ -482,17 +547,12 @@ static PyObject * grainyx_copy_channel
 
 static PyMethodDef grainyx_methods[] =
   {
-    {"bayer", grainyx_bayer, METH_VARARGS,
-        "bayer(order)\n"
-        "returns a tuple(coeff_bits, coeffs) where coeffs is a tuple of (order * order)"
-        " coefficients making up a Bayer ordered-dither matrix, and coeff_bits is the"
-        " number of bits needed to hold each coefficient value. order must be a power of 2."
-    },
     {"ordered_dither", grainyx_ordered_dither, METH_VARARGS,
-        "ordered_dither(pix, depth, order, do_a, do_r, do_g, do_b)\n"
-        "reduces the pixels in pix, which must be a pointer to a cairo_surface_t"
-        " of FORMAT_RGB24 or FORMAT_ARGB32, down to depth bits per component."
-        " order is size of the dither matrix to use; it must be a power of 2."
+        "ordered_dither(matrix, depth, srcchan1 = None, dstchan1 = None, srcchan2 = None, dstchan2 = None, srcchan3 = None, dstchan3 = None, srcchan4 = None, dstchan4 = None)\n"
+        "applies the specified matrix, which must be a DitherMatrix instance, to up to"
+        " 4 pairs of source and destination Channel instances. All the source Channels must"
+        " have the same baseaddr, width, height, depth and stride, and similarly all the"
+        " destination Channels."
     },
     {"copy_channel", grainyx_copy_channel, METH_VARARGS,
         "copy_channel(src_channel, dst_channel)\n"
