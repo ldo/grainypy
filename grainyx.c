@@ -295,7 +295,7 @@ static PyObject * grainyx_ordered_dither
                       );
                     break;
                   } /*if*/
-                get_dither_matrix(matrixobj, false, &dither);
+                get_dither_matrix(matrixobj, true, &dither);
                 if (PyErr_Occurred())
                     break;
                 some_src = 0;
