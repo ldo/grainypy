@@ -28,6 +28,30 @@ class Channel :
         self.bitwidth = bitwidth
     #end __init__
 
+    def subrect(self, rect) :
+        "returns a Channel descriptor for the specified rectangular portion of this Channel." \
+        " rect should be a qahirah.Rect with integer bounds."
+        rect.assert_isint()
+        if (
+                rect.left < 0 or rect.right > self.width
+            or
+                rect.top < 0 or rect.bottom > self.height
+        ) :
+            raise IndexError("rect exceeds available bounds")
+        #end if
+        return \
+            Channel \
+              (
+                baseaddr = self.baseaddr + rect.top * self.stride + rect.left * self.depth,
+                width = rect.width,
+                height = rect.height,
+                depth = self.depth,
+                stride = self.stride,
+                shiftoffset = self.shiftoffset,
+                bitwidth = self.bitwidth
+              )
+    #end subrect
+
 #end Channel
 
 class CAIRO_PIX(enum.IntEnum) :
@@ -200,7 +224,7 @@ def copy_image_channel(src_img, src_component, dst_img, dst_component) :
     dst_img.mark_dirty()
 #end copy_image_channel
 
-def ordered_dither_image(src_img, dst_img, depth, matrix, do_a, do_r, do_g, do_b) :
+def ordered_dither_image(src_img, dst_img, depth, matrix, src_bounds, dst_bounds, do_a, do_r, do_g, do_b) :
     "dithers src_image into the corresponding components of dst_img using the specified" \
     " DitherMatrix, according to the booleans do_a, do_r, do_g and do_b. src_img and dst_img" \
     " may be the same image."
@@ -228,7 +252,13 @@ def ordered_dither_image(src_img, dst_img, depth, matrix, do_a, do_r, do_g, do_b
     :
         if doit :
             srcchan[nr_components] = cairo_component(src_img, component)
+            if src_bounds != None :
+                srcchan[nr_components] = srcchan[nr_components].subrect(src_bounds)
+            #end if
             dstchan[nr_components] = cairo_component(dst_img, component)
+            if dst_bounds != None :
+                dstchan[nr_components] = dstchan[nr_components].subrect(dst_bounds)
+            #end if
             nr_components += 1
         #end if
     #end for
