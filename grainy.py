@@ -307,9 +307,8 @@ def bool_channel_op(table, depth) :
                   ),
                 0
               )
-            for index in range(1 << depth * 2)
-            for pixl in (index >> depth,)
-            for pixr in (index & (1 << depth) - 1,)
+            for pixl in range(1 << depth)
+            for pixr in range(1 << depth)
           )
 #end bool_channel_op
 
