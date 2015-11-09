@@ -291,7 +291,7 @@ def ordered_dither_image(src_img, dst_img, depth, matrix, src_bounds, dst_bounds
 
 def bool_channel_op(table, depth) :
     "constructs a lookup table suitable for passing to channel_op. table must be" \
-    " a 4-tuple giving the destsination pixel bit value where the corresponding srcl" \
+    " a 4-tuple giving the destination pixel bit value where the corresponding srcl" \
     " and srcr pixel bit values are respectively (0, 0), (0, 1), (1, 0) and (1, 1)," \
     " and depth is the number of bits per channel component."
     return \
