@@ -249,34 +249,37 @@ static PyObject * grainyx_ordered_dither
               /* replace omitted arguments with None to simplify checks */
                 if (srcchan2obj == 0)
                   {
-                    Py_INCREF(Py_None);
                     srcchan2obj = Py_None;
                   } /*if*/
                 if (dstchan2obj == 0)
                   {
-                    Py_INCREF(Py_None);
                     dstchan2obj = Py_None;
                   } /*if*/
                 if (srcchan3obj == 0)
                   {
-                    Py_INCREF(Py_None);
                     srcchan3obj = Py_None;
                   } /*if*/
                 if (dstchan3obj == 0)
                   {
-                    Py_INCREF(Py_None);
                     dstchan3obj = Py_None;
                   } /*if*/
                 if (srcchan4obj == 0)
                   {
-                    Py_INCREF(Py_None);
                     srcchan4obj = Py_None;
                   } /*if*/
                 if (dstchan4obj == 0)
                   {
-                    Py_INCREF(Py_None);
                     dstchan4obj = Py_None;
                   } /*if*/
+                Py_INCREF(matrixobj);
+                Py_INCREF(srcchan1obj);
+                Py_INCREF(dstchan1obj);
+                Py_INCREF(srcchan2obj);
+                Py_INCREF(dstchan2obj);
+                Py_INCREF(srcchan3obj);
+                Py_INCREF(dstchan3obj);
+                Py_INCREF(srcchan4obj);
+                Py_INCREF(dstchan4obj);
                 if
                   (
                         (srcchan1obj != Py_None) != (dstchan1obj != Py_None)
