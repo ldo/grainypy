@@ -1,5 +1,7 @@
 #+
-# Higher-level wrapper around lower-level extension module code.
+# grainy -- a Python module for making high-quality images look low-quality.
+# This code offers functions for doing dithering to make images look like
+# they are being shown on old, 1980s-vintage, colour-limited display hardware.
 #-
 
 import enum

@@ -1,5 +1,8 @@
 /*
-    Lower-level code for grainy module.
+    Lower-level code for grainy module. This C code implements the most
+    CPU-intensive parts of the algorithms. It is written to make as few
+    assumptions about data structures as possible, leaving it to the
+    Python layer to make things easier for the caller.
 */
 
 #include <iso646.h>
