@@ -239,7 +239,7 @@ def copy_image_channel(src_img, src_component, dst_img, dst_component) :
     dst_img.mark_dirty()
 #end copy_image_channel
 
-def ordered_dither_image(src_img, dst_img, depth, matrix, src_bounds, dst_bounds, do_a, do_r, do_g, do_b) :
+def ordered_dither_image(depth, matrix, src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
     "dithers src_image into the corresponding components of dst_img using the specified" \
     " DitherMatrix, according to the booleans do_a, do_r, do_g and do_b. src_img and dst_img" \
     " may be the same image."
