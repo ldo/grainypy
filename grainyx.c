@@ -3,6 +3,9 @@
     CPU-intensive parts of the algorithms. It is written to make as few
     assumptions about data structures as possible, leaving it to the
     Python layer to make things easier for the caller.
+
+    Copyright 2015 Lawrence D'Oliveiro <ldo@geek-central.gen.nz>.
+    Licensed under the GNU Lesser General Public License v2.1 or later.
 */
 
 #include <iso646.h>

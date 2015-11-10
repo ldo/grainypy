@@ -1,7 +1,10 @@
+"""grainy -- a Python module for making high-quality images look low-quality.
+This code offers functions for doing dithering to make images look like
+they are being shown on old, 1980s-vintage, colour-limited display hardware.
+"""
 #+
-# grainy -- a Python module for making high-quality images look low-quality.
-# This code offers functions for doing dithering to make images look like
-# they are being shown on old, 1980s-vintage, colour-limited display hardware.
+# Copyright 2015 Lawrence D'Oliveiro <ldo@geek-central.gen.nz>.
+# Licensed under the GNU Lesser General Public License v2.1 or later.
 #-
 
 import enum
