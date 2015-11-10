@@ -202,6 +202,12 @@ static void get_dither_matrix
 
 /*
     User-visible stuff
+
+    Note on PyArg_ParseTuple calls: these may have partially succeeded even if
+    it returned false, with some arguments returned but not others. To deal
+    with this, I need to ensure I correctly allocate references to all returned
+    objects, so they get correctly released at the end. You’ll note that this is
+    done before checking whether the call succeeded or not.
 */
 
 static PyObject * grainyx_ordered_dither
@@ -231,22 +237,20 @@ static PyObject * grainyx_ordered_dither
             PyObject * dstchan4obj = 0;
             do /*once*/
               {
-                if
+                const bool success = PyArg_ParseTuple
                   (
-                    not PyArg_ParseTuple
-                      (
-                        args,
-                        "OIOO|OOOOOO",
-                        &matrixobj,
-                        &to_depth,
-                        &srcchan1obj, &dstchan1obj,
-                        &srcchan2obj, &dstchan2obj,
-                        &srcchan3obj, &dstchan3obj,
-                        &srcchan4obj, &dstchan4obj
-                      )
-                  )
-                    break;
-              /* replace omitted arguments with None to simplify checks */
+                    args,
+                    "OIOO|OOOOOO",
+                    &matrixobj,
+                    &to_depth,
+                    &srcchan1obj, &dstchan1obj,
+                    &srcchan2obj, &dstchan2obj,
+                    &srcchan3obj, &dstchan3obj,
+                    &srcchan4obj, &dstchan4obj
+                  );
+                Py_XINCREF(matrixobj);
+                Py_XINCREF(srcchan1obj);
+                Py_XINCREF(dstchan1obj);
                 if (srcchan2obj == 0)
                   {
                     srcchan2obj = Py_None;
@@ -271,15 +275,14 @@ static PyObject * grainyx_ordered_dither
                   {
                     dstchan4obj = Py_None;
                   } /*if*/
-                Py_INCREF(matrixobj);
-                Py_INCREF(srcchan1obj);
-                Py_INCREF(dstchan1obj);
                 Py_INCREF(srcchan2obj);
                 Py_INCREF(dstchan2obj);
                 Py_INCREF(srcchan3obj);
                 Py_INCREF(dstchan3obj);
                 Py_INCREF(srcchan4obj);
                 Py_INCREF(dstchan4obj);
+                if (not success)
+                    break;
                 if
                   (
                         (srcchan1obj != Py_None) != (dstchan1obj != Py_None)
@@ -470,10 +473,11 @@ static PyObject * grainyx_copy_channel
             PyObject * dstobj = 0;
             do /*once*/
               {
-                if (not PyArg_ParseTuple(args, "OO", &srcobj, &dstobj))
+                const bool success = PyArg_ParseTuple(args, "OO", &srcobj, &dstobj);
+                Py_XINCREF(srcobj);
+                Py_XINCREF(dstobj);
+                if (not success)
                     break;
-                Py_INCREF(srcobj);
-                Py_INCREF(dstobj);
                 get_channel(srcobj, true, 0, &src);
                 if (PyErr_Occurred())
                     break;
@@ -583,20 +587,16 @@ static PyObject * grainyx_channel_op
             uint table_size, index;
             do /*once*/
               {
-                if
+                const bool success = PyArg_ParseTuple
                   (
-                    not PyArg_ParseTuple
-                      (
-                        args, "O|OOOOOOOOOOOO",
-                        &tableobj,
-                        &srcl1obj, &srcr1obj, &dst1obj,
-                        &srcl2obj, &srcr2obj, &dst2obj,
-                        &srcl3obj, &srcr3obj, &dst3obj,
-                        &srcl4obj, &srcr4obj, &dst4obj
-                      )
-                  )
-                    break;
-                Py_INCREF(tableobj);
+                    args, "O|OOOOOOOOOOOO",
+                    &tableobj,
+                    &srcl1obj, &srcr1obj, &dst1obj,
+                    &srcl2obj, &srcr2obj, &dst2obj,
+                    &srcl3obj, &srcr3obj, &dst3obj,
+                    &srcl4obj, &srcr4obj, &dst4obj
+                  );
+                Py_XINCREF(tableobj);
               /* replace omitted arguments with None to simplify checks */
                 if (srcl1obj == 0)
                   {
@@ -658,6 +658,8 @@ static PyObject * grainyx_channel_op
                 Py_INCREF(srcl4obj);
                 Py_INCREF(srcr4obj);
                 Py_INCREF(dst4obj);
+                if (not success)
+                    break;
                 if
                   (
                         (srcl1obj != Py_None) != (dst1obj != Py_None)
