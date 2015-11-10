@@ -48,7 +48,7 @@ static bool get_channel
   (
     PyObject * desc,
     bool required, /* indicates desc cannot be None for no channel */
-    channel_t * same_pix_as, /* if non-null, then result must have same baseaddr, width, height, stride and depth as this */
+    const channel_t * same_pix_as, /* if non-null, then result must have same baseaddr, width, height, stride and depth as this */
     channel_t * result
   )
   /* extracts the fields of desc, which is expected to be an instance of grainy.Channel.
@@ -559,145 +559,335 @@ static PyObject * grainyx_channel_op
   {
     PyObject * result = 0;
     cpnt_t * table = 0;
-    channel_t srcl, srcr, dst;
+    channel_t srcl1, srcr1, dst1, srcl2, srcr2, dst2, srcl3, srcr3, dst3, srcl4, srcr4, dst4;
+    bool gotchan1, gotchan2, gotchan3, gotchan4;
+    const channel_t * some_srcl;
+    const channel_t * some_srcr;
+    const channel_t * some_dst;
     do /*once*/
       {
-          {
+          { /* get args */
             PyObject * tableobj = 0;
-            PyObject * srclobj = 0;
-            PyObject * srcrobj = 0;
-            PyObject * dstobj = 0;
+            PyObject * srcl1obj = 0;
+            PyObject * srcr1obj = 0;
+            PyObject * dst1obj = 0;
+            PyObject * srcl2obj = 0;
+            PyObject * srcr2obj = 0;
+            PyObject * dst2obj = 0;
+            PyObject * srcl3obj = 0;
+            PyObject * srcr3obj = 0;
+            PyObject * dst3obj = 0;
+            PyObject * srcl4obj = 0;
+            PyObject * srcr4obj = 0;
+            PyObject * dst4obj = 0;
             uint table_size, index;
             do /*once*/
               {
-                if (not PyArg_ParseTuple(args, "OOOO", &tableobj, &srclobj, &srcrobj, &dstobj))
-                    break;
-                Py_INCREF(tableobj);
-                Py_INCREF(srclobj);
-                Py_INCREF(srcrobj);
-                Py_INCREF(dstobj);
-                get_channel(srclobj, true, 0, &srcl);
-                if (PyErr_Occurred())
-                    break;
-                get_channel(srcrobj, true, 0, &srcr);
-                if (PyErr_Occurred())
-                    break;
-                get_channel(dstobj, true, 0, &dst);
-                if (PyErr_Occurred())
-                    break;
                 if
                   (
-                        srcl.width != srcr.width or srcr.width != dst.width
+                    not PyArg_ParseTuple
+                      (
+                        args, "O|OOOOOOOOOOOO",
+                        &tableobj,
+                        &srcl1obj, &srcr1obj, &dst1obj,
+                        &srcl2obj, &srcr2obj, &dst2obj,
+                        &srcl3obj, &srcr3obj, &dst3obj,
+                        &srcl4obj, &srcr4obj, &dst4obj
+                      )
+                  )
+                    break;
+                Py_INCREF(tableobj);
+              /* replace omitted arguments with None to simplify checks */
+                if (srcl1obj == 0)
+                  {
+                    srcl1obj = Py_None;
+                  } /*if*/
+                if (srcr1obj == 0)
+                  {
+                    srcr1obj = Py_None;
+                  } /*if*/
+                if (dst1obj == 0)
+                  {
+                    dst1obj = Py_None;
+                  } /*if*/
+                if (srcl2obj == 0)
+                  {
+                    srcl2obj = Py_None;
+                  } /*if*/
+                if (srcr2obj == 0)
+                  {
+                    srcr2obj = Py_None;
+                  } /*if*/
+                if (dst2obj == 0)
+                  {
+                    dst2obj = Py_None;
+                  } /*if*/
+                if (srcl3obj == 0)
+                  {
+                    srcl3obj = Py_None;
+                  } /*if*/
+                if (srcr3obj == 0)
+                  {
+                    srcr3obj = Py_None;
+                  } /*if*/
+                if (dst3obj == 0)
+                  {
+                    dst3obj = Py_None;
+                  } /*if*/
+                if (srcl4obj == 0)
+                  {
+                    srcl4obj = Py_None;
+                  } /*if*/
+                if (srcr4obj == 0)
+                  {
+                    srcr4obj = Py_None;
+                  } /*if*/
+                if (dst4obj == 0)
+                  {
+                    dst4obj = Py_None;
+                  } /*if*/
+                Py_INCREF(srcl1obj);
+                Py_INCREF(srcr1obj);
+                Py_INCREF(dst1obj);
+                Py_INCREF(srcl2obj);
+                Py_INCREF(srcr2obj);
+                Py_INCREF(dst2obj);
+                Py_INCREF(srcl3obj);
+                Py_INCREF(srcr3obj);
+                Py_INCREF(dst3obj);
+                Py_INCREF(srcl4obj);
+                Py_INCREF(srcr4obj);
+                Py_INCREF(dst4obj);
+                if
+                  (
+                        (srcl1obj != Py_None) != (dst1obj != Py_None)
                     or
-                        srcl.height != srcr.height or srcr.height != dst.height
+                        (srcr1obj != Py_None) != (dst1obj != Py_None)
                     or
-                        srcl.bitwidth != srcr.bitwidth or srcr.bitwidth != dst.bitwidth
+                        (srcl2obj != Py_None) != (dst2obj != Py_None)
+                    or
+                        (srcr2obj != Py_None) != (dst2obj != Py_None)
+                    or
+                        (srcl3obj != Py_None) != (dst3obj != Py_None)
+                    or
+                        (srcr3obj != Py_None) != (dst3obj != Py_None)
+                    or
+                        (srcl4obj != Py_None) != (dst4obj != Py_None)
+                    or
+                        (srcr4obj != Py_None) != (dst4obj != Py_None)
                   )
                   {
                     PyErr_SetString
                       (
                         PyExc_ValueError,
-                        "srcl, srcr and dst must all have same width, height and bitwidth"
+                        "srcl, srcr and dst channels must be specified/omitted together"
                       );
                     break;
                   } /*if*/
-                if (srcl.bitwidth > CPNT_BITS)
-                  {
-                    PyErr_Format(PyExc_ValueError, "bitwidth cannot exceed %d for now", CPNT_BITS);
-                    break;
-                  } /*if*/
-                if
-                  (
-                        srcl.depth != 1 and srcl.depth != 4
-                    or
-                        srcr.depth != 1 and srcr.depth != 4
-                    or
-                        dst.depth != 1 and dst.depth != 4
-                  )
-                  {
-                    PyErr_SetString(PyExc_ValueError, "only pixel depths of 1 and 4 bytes currently supported");
-                    break;
-                  } /*if*/
-                table_size = 1 << srcl.bitwidth * 2;
-                table = calloc(table_size, sizeof(cpnt_t));
-                if (table == 0)
-                  {
-                    PyErr_NoMemory();
-                    break;
-                  } /*if*/
-                for (index = 0;;)
-                  {
-                    if (index == table_size)
-                        break;
-                    PyObject * const elt = PyTuple_GetItem(tableobj, index);
-                      /* borrowed reference, valid as long as tableobj is valid */
-                    if (PyErr_Occurred())
-                        break;
-                    table[index] = PyLong_AsUnsignedLong(elt);
-                    if (PyErr_Occurred())
-                        break;
-                    ++index;
-                  } /*for*/
+                some_srcl = 0;
+                some_srcr = 0;
+                some_dst = 0;
+                gotchan1 = get_channel(srcl1obj, false, 0, &srcl1);
                 if (PyErr_Occurred())
                     break;
+                if (gotchan1)
+                  {
+                    get_channel(srcr1obj, true, 0, &srcr1);
+                    if (PyErr_Occurred())
+                        break;
+                    get_channel(dst1obj, true, 0, &dst1);
+                    if (PyErr_Occurred())
+                        break;
+                    some_srcl = &srcl1;
+                    some_srcr = &srcr1;
+                    some_dst = &dst1;
+                  } /*if*/
+                gotchan2 = get_channel(srcl2obj, false, some_srcl, &srcl2);
+                if (PyErr_Occurred())
+                    break;
+                if (gotchan2)
+                  {
+                    get_channel(srcr2obj, true, some_srcr, &srcr2);
+                    if (PyErr_Occurred())
+                        break;
+                    get_channel(dst2obj, true, some_dst, &dst2);
+                    if (PyErr_Occurred())
+                        break;
+                    some_srcl = &srcl2; /* in case not already set */
+                    some_srcr = &srcr2;
+                    some_dst = &dst2;
+                  } /*if*/
+                gotchan3 = get_channel(srcl3obj, false, some_srcl, &srcl3);
+                if (PyErr_Occurred())
+                    break;
+                if (gotchan3)
+                  {
+                    get_channel(srcr3obj, true, some_srcr, &srcr3);
+                    if (PyErr_Occurred())
+                        break;
+                    get_channel(dst3obj, true, some_dst, &dst3);
+                    if (PyErr_Occurred())
+                        break;
+                    some_srcl = &srcl3; /* in case not already set */
+                    some_srcr = &srcr3;
+                    some_dst = &dst3;
+                  } /*if*/
+                gotchan4 = get_channel(srcl4obj, false, some_srcl, &srcl4);
+                if (PyErr_Occurred())
+                    break;
+                if (gotchan4)
+                  {
+                    get_channel(srcr4obj, true, some_srcr, &srcr4);
+                    if (PyErr_Occurred())
+                        break;
+                    get_channel(dst4obj, true, some_dst, &dst4);
+                    if (PyErr_Occurred())
+                        break;
+                    some_srcl = &srcl4; /* in case not already set */
+                    some_srcr = &srcr4;
+                    some_dst = &dst4;
+                  } /*if*/
+                if (gotchan1 or gotchan2 or gotchan3 or gotchan4)
+                  {
+                    if
+                      (
+                            some_srcl->bitwidth != some_srcr->bitwidth
+                        or
+                            some_srcr->bitwidth != some_dst->bitwidth
+                      )
+                      {
+                        PyErr_SetString
+                          (
+                            PyExc_ValueError,
+                            "srcl, srcr and dst must all have same bitwidth"
+                          );
+                        break;
+                      } /*if*/
+                    if (some_srcl->bitwidth > CPNT_BITS)
+                      {
+                        PyErr_Format(PyExc_ValueError, "bitwidth cannot exceed %d for now", CPNT_BITS);
+                        break;
+                      } /*if*/
+                    if
+                      (
+                            some_srcl->depth != 1 and some_srcl->depth != 4
+                        or
+                            some_srcr->depth != 1 and some_srcr->depth != 4
+                        or
+                            some_dst->depth != 1 and some_dst->depth != 4
+                      )
+                      {
+                        PyErr_SetString(PyExc_ValueError, "only pixel depths of 1 and 4 bytes currently supported");
+                        break;
+                      } /*if*/
+                    table_size = 1 << some_srcl->bitwidth * 2;
+                    table = calloc(table_size, sizeof(cpnt_t));
+                    if (table == 0)
+                      {
+                        PyErr_NoMemory();
+                        break;
+                      } /*if*/
+                    for (index = 0;;)
+                      {
+                        if (index == table_size)
+                            break;
+                        PyObject * const elt = PyTuple_GetItem(tableobj, index);
+                          /* borrowed reference, valid as long as tableobj is valid */
+                        if (PyErr_Occurred())
+                            break;
+                        table[index] = PyLong_AsUnsignedLong(elt);
+                        if (PyErr_Occurred())
+                            break;
+                        ++index;
+                      } /*for*/
+                    if (PyErr_Occurred())
+                        break;
+                  } /*if*/
               }
             while (false);
             Py_XDECREF(tableobj);
-            Py_XDECREF(srclobj);
-            Py_XDECREF(srcrobj);
-            Py_XDECREF(dstobj);
+            Py_XDECREF(srcl1obj);
+            Py_XDECREF(srcr1obj);
+            Py_XDECREF(dst1obj);
+            Py_XDECREF(srcl2obj);
+            Py_XDECREF(srcr2obj);
+            Py_XDECREF(dst2obj);
+            Py_XDECREF(srcl3obj);
+            Py_XDECREF(srcr3obj);
+            Py_XDECREF(dst3obj);
+            Py_XDECREF(srcl4obj);
+            Py_XDECREF(srcr4obj);
+            Py_XDECREF(dst4obj);
           }
         if (PyErr_Occurred())
             break;
-        Py_BEGIN_ALLOW_THREADS
+        if (not (gotchan1 or gotchan2 or gotchan3 or gotchan4))
           {
-            const uint srclmask = (1 << srcl.bitwidth) - 1;
-            const uint srcrmask = (1 << srcr.bitwidth) - 1;
-            const uint dstmask = (1 << dst.bitwidth) - 1 << dst.shiftoffset;
+          /* nothing to do */
+            Py_INCREF(Py_None);
+            result = Py_None; /* return success */
+            break;
+          } /*if*/
+        Py_BEGIN_ALLOW_THREADS
+          { /* do the work */
             uint row, col;
-            for (row = 0; row != srcl.height; ++row)
+            for (row = 0; row != some_srcl->height; ++row)
               {
-                const cpnt_t * const srclrow = srcl.baseaddr + row * srcl.stride;
-                const cpnt_t * const srcrrow = srcr.baseaddr + row * srcr.stride;
-                cpnt_t * const dstrow = dst.baseaddr + row * dst.stride;
-                for (col = 0; col != srcl.width; ++col)
+                const cpnt_t * const srclrow = some_srcl->baseaddr + row * some_srcl->stride;
+                const cpnt_t * const srcrrow = some_srcr->baseaddr + row * some_srcr->stride;
+                cpnt_t * const dstrow = some_dst->baseaddr + row * some_dst->stride;
+                for (col = 0; col != some_srcl->width; ++col)
                   {
-                    const uint srclpix =
-                        srcl.depth == 4 ?
-                            ((uint32_t *)srclrow)[col]
-                        : /* srcl.depth = 1 */
-                            srclrow[col];
-                    const uint srcrpix =
-                        srcr.depth == 4 ?
-                            ((uint32_t *)srcrrow)[col]
-                        : /* srcr.depth = 1 */
-                            srcrrow[col];
-                    uint dstpix =
-                        dst.depth == 4 ?
-                            ((uint32_t *)dstrow)[col]
-                        : /* dst.depth = 1 */
-                            dstrow[col];
-                    dstpix =
-                            dstpix & ~dstmask
-                        |
-                                    table
-                                        [
-                                            (srclpix >> srcl.shiftoffset & srclmask) << srcl.bitwidth
-                                        |
-                                            srcrpix >> srcr.shiftoffset & srcrmask
-                                        ]
-                                <<
-                                    dst.shiftoffset
-                            &
-                                dstmask;
-                    if (dst.depth == 4)
-                      {
-                        ((uint32_t *)dstrow)[col] = dstpix;
-                      }
-                   else /* dst.depth = 1 */
-                     {
-                        dstrow[col] = dstpix;
-                     } /*if*/
+#define cond_do(gotchan, srcl, srcr, dst) \
+                    if (gotchan) \
+                      { \
+                        const uint srclmask = (1 << srcl.bitwidth) - 1; \
+                        const uint srcrmask = (1 << srcr.bitwidth) - 1; \
+                        const uint dstmask = (1 << dst.bitwidth) - 1 << dst.shiftoffset; \
+                        const uint srclpix = \
+                            srcl.depth == 4 ? \
+                                ((uint32_t *)srclrow)[col] \
+                            : /* srcl.depth = 1 */ \
+                                srclrow[col]; \
+                        const uint srcrpix = \
+                            srcr.depth == 4 ? \
+                                ((uint32_t *)srcrrow)[col] \
+                            : /* srcr.depth = 1 */ \
+                                srcrrow[col]; \
+                        uint dstpix = \
+                            dst.depth == 4 ? \
+                                ((uint32_t *)dstrow)[col] \
+                            : /* dst.depth = 1 */ \
+                                dstrow[col]; \
+                        dstpix = \
+                                dstpix & ~dstmask \
+                            | \
+                                        table \
+                                            [ \
+                                                    (srclpix >> srcl.shiftoffset & srclmask) \
+                                                << \
+                                                    srcl.bitwidth \
+                                            | \
+                                                srcrpix >> srcr.shiftoffset & srcrmask \
+                                            ] \
+                                    << \
+                                        dst.shiftoffset \
+                                & \
+                                    dstmask; \
+                        if (dst.depth == 4) \
+                          { \
+                            ((uint32_t *)dstrow)[col] = dstpix; \
+                          } \
+                       else /* dst.depth = 1 */ \
+                         { \
+                            dstrow[col] = dstpix; \
+                         } /*if*/ \
+                      } /*if*/
+                   cond_do(gotchan1, srcl1, srcr1, dst1)
+                   cond_do(gotchan2, srcl2, srcr2, dst2)
+                   cond_do(gotchan3, srcl3, srcr3, dst3)
+                   cond_do(gotchan4, srcl4, srcr4, dst4)
+#undef cond_do
                   } /*for*/
               } /*for*/
           }
@@ -718,8 +908,7 @@ static PyMethodDef grainyx_methods[] =
         "ordered_dither(matrix, depth, srcchan1 = None, dstchan1 = None, srcchan2 = None, dstchan2 = None, srcchan3 = None, dstchan3 = None, srcchan4 = None, dstchan4 = None)\n"
         "applies the specified matrix, which must be a DitherMatrix instance, to up to"
         " 4 pairs of source and destination Channel instances. All the source Channels must"
-        " have the same baseaddr, width, height, depth and stride, and similarly all the"
-        " destination Channels."
+        " come from the same pixmap, and similarly all the destination Channels."
     },
     {"copy_channel", grainyx_copy_channel, METH_VARARGS,
         "copy_channel(src_channel, dst_channel)\n"
@@ -728,12 +917,17 @@ static PyMethodDef grainyx_methods[] =
         " overlap."
     },
     {"channel_op", grainyx_channel_op, METH_VARARGS,
-        "channel_op(table, srcl, srcr, dst)\n"
-        "performs a general functional operation on component values from srcl and srcr,"
-        " putting the result into dst, all three being Channel instances with the same"
-        " width, height and bitwidth. table is a tuple of integers, being the new component"
-        " values. It is indexed by srcl_component << bitwidth | srcr_component, so its size"
-        " must be 1 << 2 * bitwidth."
+        "channel_op(table, srcl1 = None, srcr1 = None, dst1 = None, srcl2 = None,"
+            " srcr2 = None, dst2 = None, srcl3 = None, srcr3 = None, dst3 = None,"
+            " srcl4 = None, srcr4 = None, dst4 = None)\n"
+        "performs a general functional operation on component values from srcln and srcrn,"
+        " putting the result into dstn, for up to 4 sets of sources and destinations. All the"
+        " srcln channels must come the same pixmap; similarly all the srcr from the same pixmap,"
+        " and all the dst channels from the same pixmap. All pixmaps must have the same width"
+        " and height, and all channels must have the same bitwidth. table is a tuple of"
+        " integers, being the new destination component values corresponding to each possible"
+        " pair of source component values. It is indexed by"
+        " srcl_component << bitwidth | srcr_component, so its size must be 1 << 2 * bitwidth."
     },
     {0, 0, 0, 0} /* marks end of list */
   };

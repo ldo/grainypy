@@ -312,7 +312,9 @@ def bool_channel_op(table, depth) :
           )
 #end bool_channel_op
 
-def image_channel_op(op_table, srcl_img, srcr_img, dst_img) :
+def image_channel_op(op_table, srcl_img, srcl_bounds, srcr_img, srcr_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
+    "performs the channel op defined by op_table on srcl_img and srcr_img, putting the" \
+    " results into dst_img."
     if (
             not isinstance(srcl_img, qahirah.ImageSurface)
         or
@@ -325,14 +327,44 @@ def image_channel_op(op_table, srcl_img, srcr_img, dst_img) :
     srcl_img.flush()
     srcr_img.flush()
     dst_img.flush()
-    for component in cairo_format_components[srcl_img.format] :
-        channel_op \
-          (
-            op_table,
-            cairo_component(srcl_img, component),
-            cairo_component(srcr_img, component),
-            cairo_component(dst_img, component)
-          )
+    srclchan = [None] * 4
+    srcrchan = [None] * 4
+    dstchan = [None] * 4
+    nr_components = 0
+    for \
+        doit, component \
+    in \
+        (
+            (do_a, CAIRO_PIX.A),
+            (do_r, CAIRO_PIX.R),
+            (do_g, CAIRO_PIX.G),
+            (do_b, CAIRO_PIX.B),
+        ) \
+    :
+        if doit :
+            srclchan[nr_components] = cairo_component(srcl_img, component)
+            if srcl_bounds != None :
+                srclchan[nr_components] = srclchan[nr_components].subrect(srcl_bounds)
+            #end if
+            srcrchan[nr_components] = cairo_component(srcr_img, component)
+            if srcr_bounds != None :
+                srcrchan[nr_components] = srcrchan[nr_components].subrect(srcr_bounds)
+            #end if
+            dstchan[nr_components] = cairo_component(dst_img, component)
+            if dst_bounds != None :
+                dstchan[nr_components] = dstchan[nr_components].subrect(dst_bounds)
+            #end if
+            nr_components += 1
+        #end if
+    #end for
+    channel_op \
+      (
+        op_table,
+        srclchan[0], srcrchan[0], dstchan[0],
+        srclchan[1], srcrchan[1], dstchan[1],
+        srclchan[2], srcrchan[2], dstchan[2],
+        srclchan[3], srcrchan[3], dstchan[3],
+      )
     #end for
     dst_img.mark_dirty()
 #end image_channel_op
