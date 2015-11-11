@@ -45,7 +45,7 @@ typedef struct
   {
     uint order, bits;
     uint coeffs[/*order * order*/];
-  } dither_matrix_t;
+  } ordered_dither_matrix_t;
 
 static bool get_channel
   (
@@ -128,19 +128,19 @@ static bool get_channel
         got_channel;
   } /*get_channel*/
 
-static void get_dither_matrix
+static void get_ordered_dither_matrix
   (
     PyObject * obj,
     bool required, /* indicates obj cannot be None for no matrix */
-    dither_matrix_t ** mat
+    ordered_dither_matrix_t ** mat
   )
   /* extracts the fields from a grainy.DitherMatrix instance and allocates and fills in
-    a new dither_matrix_t structure with the results. */
+    a new ordered_dither_matrix_t structure with the results. */
   {
     *mat = 0; /* to begin with */
     if (required or obj != 0 and obj != Py_None)
       {
-        dither_matrix_t * result = 0;
+        ordered_dither_matrix_t * result = 0;
         PyObject * field = 0;
         uint order, row, col;
         do /*once*/
@@ -151,7 +151,7 @@ static void get_dither_matrix
             order = PyLong_AsUnsignedLong(field);
             if (PyErr_Occurred())
                 break;
-            result = malloc(sizeof(dither_matrix_t) + sizeof(uint) * order * order);
+            result = malloc(sizeof(ordered_dither_matrix_t) + sizeof(uint) * order * order);
             if (result == 0)
               {
                 PyErr_NoMemory();
@@ -201,7 +201,7 @@ static void get_dither_matrix
         free(result);
         Py_XDECREF(field);
       } /*if*/
-  } /*get_dither_matrix*/
+  } /*get_ordered_dither_matrix*/
 
 /*
     User-visible stuff
@@ -220,7 +220,7 @@ static PyObject * grainyx_ordered_dither
   )
   {
     PyObject * result = 0;
-    dither_matrix_t * dither = 0;
+    ordered_dither_matrix_t * dither = 0;
     uint to_depth;
     channel_t srcchan1, dstchan1, srcchan2, dstchan2, srcchan3, dstchan3, srcchan4, dstchan4;
     bool gotchan1, gotchan2, gotchan3, gotchan4;
@@ -304,7 +304,7 @@ static PyObject * grainyx_ordered_dither
                       );
                     break;
                   } /*if*/
-                get_dither_matrix(matrixobj, true, &dither);
+                get_ordered_dither_matrix(matrixobj, true, &dither);
                 if (PyErr_Occurred())
                     break;
                 some_src = 0;
