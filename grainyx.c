@@ -347,13 +347,12 @@ static PyObject * grainyx_ordered_dither
             const uint height = some_src->height;
             const uint8_t * const src_pix_base = some_src->baseaddr;
             uint8_t * const dst_pix_base = some_dst->baseaddr;
-            uint row, col;
-            for (row = 0; row != height; ++row)
+            for (uint row = 0; row != height; ++row)
               {
               /* FIXME: currently always assuming pixel depth is 4 and bitwidth is 8! */
                 const pix_type * const src_row_base = (const pix_type *)(src_pix_base + row * some_src->stride);
                 pix_type * const dst_row_base = (pix_type *)(dst_pix_base + row * some_dst->stride);
-                for (col = 0; col != width; ++col)
+                for (uint col = 0; col != width; ++col)
                   {
                     pix_type const srcpixel = src_row_base[col];
                     pix_type dstpixel = dst_row_base[col];
@@ -464,12 +463,11 @@ static PyObject * grainyx_copy_channel
           } /*if*/
         Py_BEGIN_ALLOW_THREADS
           {
-            uint row, col;
-            for (row = 0; row != src.height; ++row)
+            for (uint row = 0; row != src.height; ++row)
               {
                 const uint8_t * const srcrow = src.baseaddr + row * src.stride;
                 uint8_t * const dstrow = dst.baseaddr + row * dst.stride;
-                for (col = 0; col != src.width; ++col)
+                for (uint col = 0; col != src.width; ++col)
                   {
                     uint val;
                     if (src.depth == 4)
