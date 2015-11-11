@@ -206,7 +206,7 @@ static void get_dither_matrix
 /*
     User-visible stuff
 
-    Note on PyArg_ParseTuple calls: these may have partially succeeded even if
+    Note on PyArg_ParseTuple calls: this may have partially succeeded even if
     it returned false, with some arguments returned but not others. To deal
     with this, I need to ensure I correctly allocate references to all returned
     objects, so they get correctly released at the end. You’ll note that this is
