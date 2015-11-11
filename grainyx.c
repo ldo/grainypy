@@ -391,16 +391,14 @@ static PyObject * grainyx_ordered_dither
         /* assert some_src and some_dst both not null */
           { /* do the work */
             Py_BEGIN_ALLOW_THREADS
-            uint drop_bits;
+            const uint drop_bits = CPNT_BITS - to_depth;
+            const cpnt_t drop_mask = (1 << drop_bits) - 1;
+            const cpnt_t keep_mask = ~drop_mask;
             const uint width = some_src->width;
             const uint height = some_src->height;
             const uint8_t * const src_pix_base = some_src->baseaddr;
             uint8_t * const dst_pix_base = some_dst->baseaddr;
             uint row, col;
-            cpnt_t drop_mask, keep_mask;
-            drop_bits = CPNT_BITS - to_depth;
-            drop_mask = (1 << drop_bits) - 1;
-            keep_mask = ~drop_mask;
             for (row = 0; row != height; ++row)
               {
               /* FIXME: currently always assuming pixel depth is 4 and bitwidth is 8! */
