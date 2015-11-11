@@ -222,22 +222,16 @@ static PyObject * grainyx_ordered_dither
     PyObject * result = 0;
     ordered_dither_matrix_t * dither = 0;
     uint to_depth;
-    channel_t srcchan1, dstchan1, srcchan2, dstchan2, srcchan3, dstchan3, srcchan4, dstchan4;
-    bool gotchan1, gotchan2, gotchan3, gotchan4;
+    channel_t srcchan[4], dstchan[4];
+    bool gotchan[4];
     channel_t * some_src;
     channel_t * some_dst;
     do /*once*/
       {
           { /* get args */
             PyObject * matrixobj = 0;
-            PyObject * srcchan1obj = 0;
-            PyObject * dstchan1obj = 0;
-            PyObject * srcchan2obj = 0;
-            PyObject * dstchan2obj = 0;
-            PyObject * srcchan3obj = 0;
-            PyObject * dstchan3obj = 0;
-            PyObject * srcchan4obj = 0;
-            PyObject * dstchan4obj = 0;
+            PyObject * srcchanobj[4] = {0, 0, 0, 0};
+            PyObject * dstchanobj[4] = {0, 0, 0, 0};
             do /*once*/
               {
                 const bool success = PyArg_ParseTuple
@@ -246,55 +240,38 @@ static PyObject * grainyx_ordered_dither
                     "OIOO|OOOOOO",
                     &matrixobj,
                     &to_depth,
-                    &srcchan1obj, &dstchan1obj,
-                    &srcchan2obj, &dstchan2obj,
-                    &srcchan3obj, &dstchan3obj,
-                    &srcchan4obj, &dstchan4obj
+                    srcchanobj + 0, dstchanobj + 0,
+                    srcchanobj + 1, dstchanobj + 1,
+                    srcchanobj + 2, dstchanobj + 2,
+                    srcchanobj + 3, dstchanobj + 3
                   );
                 Py_XINCREF(matrixobj);
-                Py_XINCREF(srcchan1obj);
-                Py_XINCREF(dstchan1obj);
-                if (srcchan2obj == 0)
+                Py_XINCREF(srcchanobj[0]);
+                Py_XINCREF(dstchanobj[0]);
+                for (uint chan = 1; chan != 4; ++chan)
                   {
-                    srcchan2obj = Py_None;
+                    if (srcchanobj[chan] == 0)
+                      {
+                        srcchanobj[chan] = Py_None;
+                      } /*if*/
+                    if (dstchanobj[chan] == 0)
+                      {
+                        dstchanobj[chan] = Py_None;
+                      } /*if*/
+                    Py_INCREF(srcchanobj[chan]);
+                    Py_INCREF(dstchanobj[chan]);
                   } /*if*/
-                if (dstchan2obj == 0)
-                  {
-                    dstchan2obj = Py_None;
-                  } /*if*/
-                if (srcchan3obj == 0)
-                  {
-                    srcchan3obj = Py_None;
-                  } /*if*/
-                if (dstchan3obj == 0)
-                  {
-                    dstchan3obj = Py_None;
-                  } /*if*/
-                if (srcchan4obj == 0)
-                  {
-                    srcchan4obj = Py_None;
-                  } /*if*/
-                if (dstchan4obj == 0)
-                  {
-                    dstchan4obj = Py_None;
-                  } /*if*/
-                Py_INCREF(srcchan2obj);
-                Py_INCREF(dstchan2obj);
-                Py_INCREF(srcchan3obj);
-                Py_INCREF(dstchan3obj);
-                Py_INCREF(srcchan4obj);
-                Py_INCREF(dstchan4obj);
                 if (not success)
                     break;
                 if
                   (
-                        (srcchan1obj != Py_None) != (dstchan1obj != Py_None)
+                        (srcchanobj[0] != Py_None) != (dstchanobj[0] != Py_None)
                     or
-                        (srcchan2obj != Py_None) != (dstchan2obj != Py_None)
+                        (srcchanobj[1] != Py_None) != (dstchanobj[1] != Py_None)
                     or
-                        (srcchan3obj != Py_None) != (dstchan3obj != Py_None)
+                        (srcchanobj[2] != Py_None) != (dstchanobj[2] != Py_None)
                     or
-                        (srcchan4obj != Py_None) != (dstchan4obj != Py_None)
+                        (srcchanobj[3] != Py_None) != (dstchanobj[3] != Py_None)
                   )
                   {
                     PyErr_SetString
@@ -309,53 +286,28 @@ static PyObject * grainyx_ordered_dither
                     break;
                 some_src = 0;
                 some_dst = 0;
-                gotchan1 = get_channel(srcchan1obj, false, 0, &srcchan1);
-                if (PyErr_Occurred())
-                    break;
-                if (gotchan1)
+                for (uint chan = 0;;)
                   {
-                    get_channel(dstchan1obj, true, 0, &dstchan1);
+                    if (chan == 4)
+                        break;
+                    gotchan[chan] = get_channel(srcchanobj[chan], false, some_src, srcchan + chan);
                     if (PyErr_Occurred())
                         break;
-                    some_src = &srcchan1;
-                    some_dst = &dstchan1;
-                  } /*if*/
-                gotchan2 = get_channel(srcchan2obj, false, some_src, &srcchan2);
+                    if (gotchan[chan])
+                      {
+                        get_channel(dstchanobj[chan], true, some_dst, dstchan + chan);
+                        if (PyErr_Occurred())
+                            break;
+                        some_src = srcchan + chan;
+                        some_dst = dstchan + chan;
+                      } /*if*/
+                    ++chan;
+                  } /*for*/
                 if (PyErr_Occurred())
                     break;
-                if (gotchan2)
-                  {
-                    get_channel(dstchan2obj, true, some_dst, &dstchan2);
-                    if (PyErr_Occurred())
-                        break;
-                    some_src = &srcchan2; /* in case not already set */
-                    some_dst = &dstchan2;
-                  } /*if*/
-                gotchan3 = get_channel(srcchan3obj, false, some_src, &srcchan3);
-                if (PyErr_Occurred())
-                    break;
-                if (gotchan3)
-                  {
-                    get_channel(dstchan3obj, true, some_dst, &dstchan3);
-                    if (PyErr_Occurred())
-                        break;
-                    some_src = &srcchan3; /* in case not already set */
-                    some_dst = &dstchan3;
-                  } /*if*/
-                gotchan4 = get_channel(srcchan4obj, false, some_src, &srcchan4);
-                if (PyErr_Occurred())
-                    break;
-                if (gotchan4)
-                  {
-                    get_channel(dstchan4obj, true, some_dst, &dstchan4);
-                    if (PyErr_Occurred())
-                        break;
-                    some_src = &srcchan4; /* in case not already set */
-                    some_dst = &dstchan4;
-                  } /*if*/
                 if
                   (
-                       (gotchan1 or gotchan2 or gotchan3 or gotchan4)
+                       (gotchan[0] or gotchan[1] or gotchan[2] or gotchan[3])
                    and
                         (some_src->width != some_dst->width or some_src->height != some_dst->height)
                   )
@@ -370,18 +322,15 @@ static PyObject * grainyx_ordered_dither
               }
             while (false);
             Py_XDECREF(matrixobj);
-            Py_XDECREF(srcchan1obj);
-            Py_XDECREF(dstchan1obj);
-            Py_XDECREF(srcchan2obj);
-            Py_XDECREF(dstchan2obj);
-            Py_XDECREF(srcchan3obj);
-            Py_XDECREF(dstchan3obj);
-            Py_XDECREF(srcchan4obj);
-            Py_XDECREF(dstchan4obj);
+            for (uint chan = 0; chan != 4; ++chan)
+              {
+                Py_XDECREF(srcchanobj[chan]);
+                Py_XDECREF(dstchanobj[chan]);
+              } /*for*/
           }
         if (PyErr_Occurred())
             break;
-        if (not (gotchan1 or gotchan2 or gotchan3 or gotchan4) or to_depth == CPNT_BITS)
+        if (not (gotchan[0] or gotchan[1] or gotchan[2] or gotchan[3]) or to_depth == CPNT_BITS)
           {
           /* nothing to do */
             Py_INCREF(Py_None);
@@ -416,37 +365,40 @@ static PyObject * grainyx_ordered_dither
                     (1 << to_depth) different values to map to all the rounded
                     component bits. This will require that number of threshold
                     coefficients at each pixel position. */
-#define cond_do(gotchan, srcchan, dstchan) \
-                    if (gotchan) \
-                      { \
-                        pix_type val = srcpixel >> srcchan.shiftoffset & CPNT_MAX; \
-                        if (dither->order > 1) \
-                          { \
-                            uint threshold = dither->coeffs[row % dither->order * dither->order + col % dither->order]; \
-                            uint frac = val & drop_mask; \
-                            if (drop_bits > dither->bits) \
-                              { \
-                                threshold <<= drop_bits - dither->bits; \
-                              } \
-                            else if (drop_bits < dither->bits) \
-                              { \
-                                frac <<= dither->bits - drop_bits; \
-                              } /*if*/ \
-                            frac = frac > threshold ? CPNT_MAX : 0; \
-                            val = val & keep_mask | frac & drop_mask; \
-                          } \
-                        else \
-                          { \
-                            val = (val & keep_mask) * CPNT_MAX / (CPNT_MAX - drop_mask); \
-                              /* normalize truncated value to full brightness */ \
-                          } /*if*/ \
-                        dstpixel = dstpixel & ~(CPNT_MAX << dstchan.shiftoffset) | val << dstchan.shiftoffset; \
-                      } /*if*/
-                    cond_do(gotchan1, srcchan1, dstchan1)
-                    cond_do(gotchan2, srcchan2, dstchan2)
-                    cond_do(gotchan3, srcchan3, dstchan3)
-                    cond_do(gotchan4, srcchan4, dstchan4)
-#undef cond_do
+                    for (uint chan = 0; chan != 4; ++chan)
+                      {
+                        if (gotchan[chan])
+                          {
+                            pix_type val = srcpixel >> srcchan[chan].shiftoffset & CPNT_MAX;
+                            if (dither->order > 1)
+                              {
+                                uint threshold = dither->coeffs
+                                  [
+                                    row % dither->order * dither->order + col % dither->order
+                                  ];
+                                uint frac = val & drop_mask;
+                                if (drop_bits > dither->bits)
+                                  {
+                                    threshold <<= drop_bits - dither->bits;
+                                  }
+                                else if (drop_bits < dither->bits)
+                                  {
+                                    frac <<= dither->bits - drop_bits;
+                                  } /*if*/
+                                frac = frac > threshold ? CPNT_MAX : 0;
+                                val = val & keep_mask | frac & drop_mask;
+                              }
+                            else
+                              {
+                                val = (val & keep_mask) * CPNT_MAX / (CPNT_MAX - drop_mask);
+                                  /* normalize truncated value to full brightness */
+                              } /*if*/
+                            dstpixel =
+                                    dstpixel & ~(CPNT_MAX << dstchan[chan].shiftoffset)
+                                |
+                                    val << dstchan[chan].shiftoffset;
+                          } /*if*/
+                      } /*for*/
                     dst_row_base[col] = dstpixel;
                   } /*for*/
               } /*for*/
