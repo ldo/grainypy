@@ -47,6 +47,11 @@ typedef struct
     uint coeffs[/*order * order*/];
   } ordered_dither_matrix_t;
 
+typedef struct
+  {
+    float right, lowerleft, lower, lowerright; /* error-propagation weights, normalized so they sum to 1 */
+  } diffusion_dither_matrix_t;
+
 static bool get_channel
   (
     PyObject * desc,
@@ -195,13 +200,191 @@ static void get_ordered_dither_matrix
                 break;
           /* all done */
             *mat = result;
-            result = 0; /* so I don't dispose of it yet */
+            result = 0; /* so I don’t dispose of it yet */
           }
         while (false);
         free(result);
         Py_XDECREF(field);
       } /*if*/
   } /*get_ordered_dither_matrix*/
+
+static bool get_diffusion_dither_matrix
+  (
+    PyObject * obj,
+    bool required, /* indicates obj cannot be None for no matrix */
+    diffusion_dither_matrix_t * mat
+  )
+  /* extracts the fields from a 4-tuple and fills in mat with the results. returns
+    true iff obj was present. */
+  {
+    bool gotit = false;
+    if (required or obj != 0 and obj != Py_None)
+      {
+        float total;
+        do /*once*/
+          {
+              {
+                const Py_ssize_t nrelts = PyTuple_Size(obj);
+                if (PyErr_Occurred())
+                    break;
+                if (nrelts != 4)
+                  {
+                    PyErr_SetString
+                      (
+                        PyExc_ValueError,
+                        "diffusion matrix tuple must have 4 elements"
+                      );
+                    break;
+                  } /*if*/
+              }
+            total = 0;
+            for (uint index = 0;;)
+              {
+                if (index == 4)
+                    break;
+                PyObject * const elt = PyTuple_GetItem(obj, index);
+                  /* borrowed reference, valid as long as obj is valid */
+                if (PyErr_Occurred())
+                    break;
+                const float val = (float)PyFloat_AsDouble(elt);
+                if (PyErr_Occurred())
+                    break;
+                if (val < 0)
+                  {
+                    PyErr_SetString(PyExc_ValueError, "dither weights cannot be negative");
+                    break;
+                  } /*if*/
+                ++index;
+                switch (index)
+                  {
+                case 1:
+                    mat->right = val;
+                break;
+                case 2:
+                    mat->lowerleft = val;
+                break;
+                case 3:
+                    mat->lower = val;
+                break;
+                case 4:
+                    mat->lowerright = val;
+                break;
+                  } /*switch*/
+                total += val;
+              } /*for*/
+            if (PyErr_Occurred())
+                break;
+            if (total == 0)
+              {
+                PyErr_SetString(PyExc_ZeroDivisionError, "dither weights add up to zero");
+                break;
+              } /*if*/
+          /* normalize */
+            mat->right /= total;
+            mat->lowerleft /= total;
+            mat->lower /= total;
+            mat->lowerright /= total;
+          /* all done */
+            gotit = true;
+          }
+        while (false);
+      } /*if*/
+    return
+        gotit;
+  } /*get_diffusion_dither_matrix*/
+
+static float * get_diffusion_errors
+  (
+    PyObject * obj, /* can be None to default to all zeroes */
+    uint width
+  )
+  {
+    float * result = 0;
+    float * tempresult = 0;
+    do /*once*/
+      {
+        tempresult = calloc(width + 2, sizeof(float)); /* first and last elements always initially zero */
+        if (tempresult == 0)
+          {
+            PyErr_NoMemory();
+            break;
+          } /*if*/
+        if (obj != Py_None)
+          {
+              {
+                const Py_ssize_t nrelts = PyTuple_Size(obj);
+                if (PyErr_Occurred())
+                    break;
+                if (nrelts != width)
+                  {
+                    PyErr_Format(PyExc_ValueError, "errors tuple must have %d elements", width);
+                    break;
+                  } /*if*/
+              }
+            for (uint index = 0;;)
+              {
+                if (index == width)
+                    break;
+                PyObject * const elt = PyTuple_GetItem(obj, index);
+                  /* borrowed reference, valid as long as part is valid */
+                if (PyErr_Occurred())
+                    break;
+                tempresult[index + 1] = (float)PyFloat_AsDouble(elt);
+                if (PyErr_Occurred())
+                    break;
+                ++index;
+              } /*for*/
+            if (PyErr_Occurred())
+                break;
+          } /*if*/
+      /* all done */
+        result = tempresult;
+        tempresult = 0; /* so I don't dispose of it yet */
+      }
+    while (false);
+    return
+        result;
+  } /*get_diffusion_errors*/
+
+static PyObject * put_diffusion_errors
+  (
+    uint width,
+    const float * errors /* array[width + 2], first and last elements ignored */
+  )
+  /* encodes errors into a tuple for returning to Python code. */
+  {
+    PyObject * result = 0;
+    PyObject * tempresult = 0;
+    do /*once*/
+      {
+        tempresult = PyTuple_New(width);
+        if (PyErr_Occurred())
+            break;
+        for (uint index = 0;;)
+          {
+            if (index == width)
+                break;
+            PyTuple_SET_ITEM
+              (
+                tempresult,
+                index,
+                PyFloat_FromDouble(errors[index + 1])
+              );
+            if (PyErr_Occurred())
+                break;
+            ++index;
+          } /*for*/
+        if (PyErr_Occurred())
+            break;
+      /* all done */
+        result = tempresult;
+        tempresult = 0; /* so I don’t dispose of it yet */
+      }
+    while (false);
+    Py_XDECREF(tempresult);
+    return
+        result;
+  } /*put_diffusion_errors*/
 
 /*
     User-visible stuff
@@ -412,6 +595,287 @@ static PyObject * grainyx_ordered_dither
     return
         result;
   } /*grainyx_ordered_dither*/
+
+static PyObject * grainyx_diffusion_dither
+  (
+    PyObject * self,
+    PyObject * args
+  )
+  {
+    PyObject * result = 0;
+    diffusion_dither_matrix_t dither;
+    uint to_depth;
+    float * errors[4] = {0, 0, 0, 0};
+    float * new_errors[4] = {0, 0, 0, 0};
+    channel_t srcchan[4], dstchan[4];
+    bool gotchan[4];
+    channel_t * some_src;
+    channel_t * some_dst;
+    do /*once*/
+      {
+          { /* get args */
+            PyObject * ditherobj = 0;
+            PyObject * srcchanobj[4] = {0, 0, 0, 0};
+            PyObject * errorsobj[4] = {0, 0, 0, 0};
+            PyObject * dstchanobj[4] = {0, 0, 0, 0};
+            do /*once*/
+              {
+                const bool success = PyArg_ParseTuple
+                  (
+                    args,
+                    "OIOOO|OOOOOOOOO",
+                    &ditherobj,
+                    &to_depth,
+                    srcchanobj + 0, errorsobj + 0, dstchanobj + 0,
+                    srcchanobj + 1, errorsobj + 1, dstchanobj + 1,
+                    srcchanobj + 2, errorsobj + 2, dstchanobj + 2,
+                    srcchanobj + 3, errorsobj + 3, dstchanobj + 3
+                  );
+                Py_XINCREF(ditherobj);
+                Py_XINCREF(srcchanobj[0]);
+                Py_XINCREF(errorsobj[0]);
+                Py_XINCREF(dstchanobj[0]);
+                for (uint chan = 1; chan != 4; ++chan)
+                  {
+                    if (srcchanobj[chan] == 0)
+                      {
+                        srcchanobj[chan] = Py_None;
+                      } /*if*/
+                    if (errorsobj[chan] == 0)
+                      {
+                        errorsobj[chan] = Py_None;
+                      } /*if*/
+                    if (dstchanobj[chan] == 0)
+                      {
+                        dstchanobj[chan] = Py_None;
+                      } /*if*/
+                    Py_INCREF(srcchanobj[chan]);
+                    Py_INCREF(errorsobj[chan]);
+                    Py_INCREF(dstchanobj[chan]);
+                  } /*for*/
+                if (not success)
+                    break;
+                if
+                  (
+                        (srcchanobj[0] != Py_None) != (dstchanobj[0] != Py_None)
+                    or
+                        (srcchanobj[1] != Py_None) != (dstchanobj[1] != Py_None)
+                    or
+                        (srcchanobj[2] != Py_None) != (dstchanobj[2] != Py_None)
+                    or
+                        (srcchanobj[3] != Py_None) != (dstchanobj[3] != Py_None)
+                    /* should also check errorsobj? */
+                  )
+                  {
+                    PyErr_SetString
+                      (
+                        PyExc_ValueError,
+                        "src and dst channels must be specified/omitted in pairs"
+                      );
+                    break;
+                  } /*if*/
+                get_diffusion_dither_matrix(ditherobj, true, &dither);
+                if (PyErr_Occurred())
+                    break;
+                some_src = 0;
+                some_dst = 0;
+                for (uint chan = 0;;)
+                  {
+                    if (chan == 4)
+                        break;
+                    gotchan[chan] = get_channel(srcchanobj[chan], false, some_src, srcchan + chan);
+                    if (PyErr_Occurred())
+                        break;
+                    if (gotchan[chan])
+                      {
+                        get_channel(dstchanobj[chan], true, some_dst, dstchan + chan);
+                        if (PyErr_Occurred())
+                            break;
+                        some_src = srcchan + chan; /* in case not already set */
+                        some_dst = dstchan + chan;
+                      } /*if*/
+                    ++chan;
+                  } /*for*/
+                if (PyErr_Occurred())
+                    break;
+                if (gotchan[0] or gotchan[1] or gotchan[2] or gotchan[3])
+                  {
+                    if (some_src->width != some_dst->width or some_src->height != some_dst->height)
+                      {
+                        PyErr_SetString
+                          (
+                            PyExc_ValueError,
+                            "src and dst channel pixmaps must have same dimensions"
+                          );
+                        break;
+                      } /*if*/
+                    for (uint chan = 0;;)
+                      {
+                        if (chan == 4)
+                            break;
+                        if (gotchan[chan])
+                          {
+                            errors[chan] = get_diffusion_errors(errorsobj[chan], some_src->width);
+                            if (PyErr_Occurred())
+                                break;
+                          } /*if*/
+                        ++chan;
+                      } /*for*/
+                    if (PyErr_Occurred())
+                        break;
+                  } /*if*/
+              }
+            while (false);
+            Py_XDECREF(ditherobj);
+            for (uint chan = 0; chan != 4; ++chan)
+              {
+                Py_XDECREF(srcchanobj[chan]);
+                Py_XDECREF(errorsobj[chan]);
+                Py_XDECREF(dstchanobj[chan]);
+              } /*for*/
+          }
+        if (PyErr_Occurred())
+            break;
+        if (not (gotchan[0] or gotchan[1] or gotchan[2] or gotchan[3]) or to_depth == CPNT_BITS)
+          {
+          /* nothing to do */
+            Py_INCREF(Py_None);
+            result = Py_None; /* return success */
+            break;
+          } /*if*/
+        /* assert some_src and some_dst both not null */
+        for (uint chan = 0;;)
+          {
+            if (chan == 4)
+                break;
+            if (gotchan[chan])
+              {
+                new_errors[chan] = calloc(some_src->width + 2, sizeof(float));
+                if (new_errors[chan] == 0)
+                  {
+                    PyErr_NoMemory();
+                    break;
+                  } /*if*/
+              } /*if*/
+            ++chan;
+          } /*for*/
+        if (PyErr_Occurred())
+            break;
+          { /* do the work */
+            Py_BEGIN_ALLOW_THREADS
+            const uint drop_bits = CPNT_BITS - to_depth;
+            const float error_scale = 1 << drop_bits;
+            const cpnt_t drop_mask = (1 << drop_bits) - 1;
+            const cpnt_t keep_mask = ~drop_mask;
+            const uint width = some_src->width;
+            const uint height = some_src->height;
+            const uint8_t * const src_pix_base = some_src->baseaddr;
+            uint8_t * const dst_pix_base = some_dst->baseaddr;
+            for (uint row = 0; row != height; ++row)
+              {
+              /* FIXME: currently always assuming pixel depth is 4 and bitwidth is 8! */
+                const pix_type * const src_row_base = (const pix_type *)(src_pix_base + row * some_src->stride);
+                pix_type * const dst_row_base = (pix_type *)(dst_pix_base + row * some_dst->stride);
+                for (uint chan = 0; chan != 4; ++chan)
+                  {
+                    if (gotchan[chan])
+                      {
+                        for (uint col = 0; col != width + 2; ++col)
+                          {
+                            new_errors[chan][col] = 0;
+                          } /*for*/
+                      } /*if*/
+                  } /*for*/
+                for (uint col = 0; col != width; ++col)
+                  {
+                    pix_type const srcpixel = src_row_base[col];
+                    pix_type dstpixel = dst_row_base[col];
+                    for (uint chan = 0; chan != 4; ++chan)
+                      {
+                        if (gotchan[chan])
+                          {
+                            const pix_type srcval =
+                                    (srcpixel >> srcchan[chan].shiftoffset & CPNT_MAX)
+                                +
+                                    lrintf(errors[chan][col + 1] * error_scale);
+                            const pix_type dstval = srcval & keep_mask;
+                            const float new_error = ((int)srcval - (int)dstval) / error_scale;
+                            new_errors[chan][col] += new_error * dither.lowerleft;
+                            new_errors[chan][col + 1] += new_error * dither.lower;
+                            new_errors[chan][col + 2] += new_error * dither.lowerright;
+                            errors[chan][col + 2] += new_error * dither.right;
+                            dstpixel =
+                                    dstpixel & ~(CPNT_MAX << dstchan[chan].shiftoffset)
+                                |
+                                    dstval << dstchan[chan].shiftoffset;
+                          } /*if*/
+                      } /*for*/
+                    dst_row_base[col] = dstpixel;
+                  } /*for*/
+                for (uint chan = 0; chan != 4; ++chan)
+                  {
+                    if (gotchan[chan])
+                      {
+                      /* new_errors becomes errors for next row */
+                        float * const temp = new_errors[chan];
+                        new_errors[chan] = errors[chan];
+                        errors[chan] = temp;
+                      } /*if*/
+                  } /*for*/
+              } /*for*/
+            Py_END_ALLOW_THREADS
+          }
+      /* return updated errors tuples */
+          {
+            PyObject * tempresult = 0;
+            do /*once*/
+              {
+                tempresult = PyTuple_New(4);
+                if (PyErr_Occurred())
+                    break;
+                for (uint chan = 0;;)
+                  {
+                    if (chan == 4)
+                        break;
+                    if (gotchan[chan])
+                      {
+                        PyTuple_SET_ITEM
+                          (
+                            tempresult,
+                            chan,
+                            put_diffusion_errors(some_src->width, errors[chan])
+                          );
+                        if (PyErr_Occurred())
+                            break;
+                      }
+                    else
+                      {
+                        Py_INCREF(Py_None);
+                        PyTuple_SET_ITEM(tempresult, chan, Py_None);
+                      } /*if*/
+                    ++chan;
+                  } /*for*/
+                if (PyErr_Occurred())
+                    break;
+              /* all done */
+                result = tempresult;
+                tempresult = 0; /* so I don’t dispose of it yet */
+              }
+            while (false);
+            Py_XDECREF(tempresult);
+          }
+        if (PyErr_Occurred())
+            break;
+      }
+    while (false);
+    for (uint chan = 0; chan != 4; ++chan)
+      {
+        free(errors[chan]);
+        free(new_errors[chan]);
+      } /*for*/
+    return
+        result;
+  } /*grainyx_diffusion_dither*/
 
 static PyObject * grainyx_copy_channel
   (
@@ -772,6 +1236,20 @@ static PyMethodDef grainyx_methods[] =
         "applies the specified matrix, which must be a DitherMatrix instance, to up to"
         " 4 pairs of source and destination Channel instances. All the source Channels must"
         " come from the same pixmap, and similarly all the destination Channels."
+    },
+    {"diffusion_dither", grainyx_diffusion_dither, METH_VARARGS,
+        "diffusion_dither(dither, depth, srcchan1 = None, errors1 = None, dstchan1 = None, srcchan2 = None, errors2 = None, dstchan2 = None, srcchan3 = None, errors3 = None, dstchan3 = None, srcchan4 = None, errors4 = None, dstchan4 = None)\n"
+        "applies a diffusion dither using the specified dither coefficients, which must be"
+        " a tuple of 4 non-negative numbers for the error-diffusion weights, to up to 4 pairs"
+        " of source and destination Channel instances."
+        " All the source Channels must come from the same pixmap, and similarly all the"
+        " destination Channels. The dither weights specify the relative amounts of error to"
+        " propagate to the right, lower-left, lower and lower-right neighbouring pixels"
+        " respectively. It is possible to specify initial errors tuples for each source"
+        " channel, for propagation across vertical tiles. Each errors tuple must have the same"
+        " number of elements as the width of the pixmaps being operated on. The function"
+        " result is a tuple of four tuples, being the errors propagated out of the bottommost"
+        " row of pixels."
     },
     {"copy_channel", grainyx_copy_channel, METH_VARARGS,
         "copy_channel(src_channel, dst_channel)\n"

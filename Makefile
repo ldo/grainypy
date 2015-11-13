@@ -4,7 +4,7 @@ PYTHONVER=python3.4m
 CFLAGS=-g -I/usr/include/${PYTHONVER} -fPIC -Wall -Wno-parentheses
 
 grainyx.so : grainyx.o
-	$(CC) $^ -L${PYTHONVER}/config -l${PYTHONVER} -shared -o $@
+	$(CC) $^ -L${PYTHONVER}/config -l${PYTHONVER} -lm -shared -o $@
 
 grainyx.o : grainyx.c
 

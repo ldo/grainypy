@@ -218,6 +218,7 @@ class BayerMatrix(DitherMatrix) :
 
 copy_channel = grainyx.copy_channel
 ordered_dither = grainyx.ordered_dither
+diffusion_dither = grainyx.diffusion_dither
 channel_op = grainyx.channel_op
 
 def copy_image_channel(src_img, src_component, dst_img, dst_component) :
@@ -242,10 +243,7 @@ def copy_image_channel(src_img, src_component, dst_img, dst_component) :
     dst_img.mark_dirty()
 #end copy_image_channel
 
-def ordered_dither_image(depth, matrix, src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
-    "dithers src_image into the corresponding components of dst_img using the specified" \
-    " DitherMatrix, according to the booleans do_a, do_r, do_g and do_b. src_img and dst_img" \
-    " may be the same image."
+def construct_channels(src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
     if (
             not isinstance(src_img, qahirah.ImageSurface)
         or
@@ -280,6 +278,15 @@ def ordered_dither_image(depth, matrix, src_img, src_bounds, dst_img, dst_bounds
             nr_components += 1
         #end if
     #end for
+    return \
+        srcchan, dstchan
+#end construct_channels
+
+def ordered_dither_image(matrix, depth, src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
+    "dithers src_image into the corresponding components of dst_img using the specified" \
+    " DitherMatrix, according to the booleans do_a, do_r, do_g and do_b. src_img and dst_img" \
+    " may be the same image."
+    srcchan, dstchan = construct_channels(src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b)
     ordered_dither \
       (
         matrix,
@@ -291,6 +298,22 @@ def ordered_dither_image(depth, matrix, src_img, src_bounds, dst_img, dst_bounds
       )
     dst_img.mark_dirty()
 #end ordered_dither_image
+
+def diffusion_dither_image(dither, depth, src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
+    "dithers src_image into the corresponding components of dst_img using the specified" \
+    " 4-tuple of relative diffusion weights, according to the booleans do_a, do_r, do_g" \
+    " and do_b. src_img and dst_img may be the same image."
+    srcchan, dstchan = construct_channels(src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b)
+    diffusion_dither \
+      (
+        dither,
+        depth,
+        srcchan[0], None, dstchan[0],
+        srcchan[1], None, dstchan[1],
+        srcchan[2], None, dstchan[2],
+        srcchan[3], None, dstchan[3],
+      )
+#end diffusion_dither_image
 
 def bool_channel_op(table, depth) :
     "constructs a lookup table suitable for passing to channel_op. table must be" \
