@@ -799,7 +799,7 @@ static PyObject * grainyx_diffusion_dither
                                 +
                                     lrintf(errors[chan][col + 1] * error_scale);
                             const pix_type dstval = srcval & keep_mask;
-                            const float new_error = ((int)srcval - (int)dstval) / error_scale;
+                            const float new_error = (srcval & drop_mask) / error_scale;
                             new_errors[chan][col] += new_error * dither.lowerleft;
                             new_errors[chan][col + 1] += new_error * dither.lower;
                             new_errors[chan][col + 2] += new_error * dither.lowerright;
