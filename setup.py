@@ -24,6 +24,7 @@ distutils.core.setup \
                 name = "grainyx",
                 sources = ["grainyx.c"],
                 libraries = ["m"],
+                extra_compile_args = ["-Wno-parentheses", "-Wno-maybe-uninitialized"],
               ),
         ],
   )
