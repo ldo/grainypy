@@ -1005,16 +1005,20 @@ static PyObject * grainyx_diffusion_dither
                             const pix_type srcval =
                                 lrintf
                                   (
-                                    fminf
+                                    fmaxf
                                       (
-                                            (srcpixel >> srcchan[chan].shiftoffset & CPNT_MAX)
-                                        +
-                                            errors[chan][0][col] * error_scale,
-                                        CPNT_MAX
+                                        fminf
+                                          (
+                                                (srcpixel >> srcchan[chan].shiftoffset & CPNT_MAX)
+                                            +
+                                                errors[chan][0][col] * error_scale,
+                                            CPNT_MAX
+                                          ),
+                                        0
                                       )
                                   );
-                            const pix_type dstval = srcval & keep_mask;
-                            const float new_error = (srcval & drop_mask) / error_scale;
+                            const pix_type dstval = (srcval & keep_mask) * CPNT_MAX / (CPNT_MAX & keep_mask);
+                            const float new_error = ((int)srcval - (int)dstval) / error_scale;
                             for (uint drow = 0; drow != dither.nr_rows; ++drow)
                               {
                                 for (uint ecol = 0; ecol != dither.nr_cols; ++ecol)
