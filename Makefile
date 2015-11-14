@@ -9,6 +9,6 @@ grainyx.so : grainyx.o
 grainyx.o : grainyx.c
 
 clean :
-	rm -rf grainyx.so grainyx.o build/
+	rm -rf grainyx.so grainyx.o build/ __pycache__/
 
 .PHONY : clean
