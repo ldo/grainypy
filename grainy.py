@@ -330,14 +330,14 @@ class diffusion :
 
 #end diffusion
 
-def ordered_dither_image(matrix, depth, src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
+def ordered_dither_image(dither, depth, src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
     "dithers src_image into the corresponding components of dst_img using the specified" \
     " DitherMatrix, according to the booleans do_a, do_r, do_g and do_b. src_img and dst_img" \
     " may be the same image."
     srcchan, dstchan = construct_channels(src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b)
     ordered_dither \
       (
-        matrix,
+        dither,
         depth,
         srcchan[0], dstchan[0],
         srcchan[1], dstchan[1],
