@@ -283,16 +283,50 @@ def construct_channels(src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_
 #end construct_channels
 
 class diffusion :
-    "various useful error-diffusion matrices."
+    "various useful error-diffusion matrices. Each matrix is represented as a dict" \
+    " with the key being the (row, col) integer coordinates, and the value being" \
+    " the relative weight (may be integer or real). row numbers must not be negative." \
+    " On row 0, column numbers must be positive."
 
-    floyd_steinberg = {(0, 1) : 7, (1, -1) : 3, (1, 0) : 5, (1, 1) : 1}
+    floyd_steinberg = \
+        {
+                                     (0, 1) : 7,
+            (1, -1) : 3, (1, 0) : 5, (1, 1) : 1,
+        }
     jarvis_judice_ninke = \
         {
-            (0, 1) : 7, (1, 1) : 5,
+                                                  (0, 1) : 7, (0, 2) : 5,
             (1, -2) : 3, (1, -1) : 5, (1, 0) : 7, (1, 1) : 5, (1, 2) : 3,
-            (1, -2) : 1, (1, -1) : 3, (1, 0) : 5, (1, 1) : 3, (1, 2) : 1,
+            (2, -2) : 1, (2, -1) : 3, (2, 0) : 5, (2, 1) : 3, (2, 2) : 1,
         }
-    sierra_lite = {(0, 1) : 2, (1, -1) : 1, (1, 0) : 1}
+    stucki = \
+        {
+                                                  (0, 1) : 8, (0, 2) : 4,
+            (1, -2) : 2, (1, -1) : 4, (1, 0) : 8, (1, 1) : 4, (1, 2) : 2,
+            (2, -2) : 1, (2, -1) : 2, (2, 0) : 4, (2, 1) : 2, (2, 2) : 1,
+        }
+    burkes = \
+        {
+                                                  (0, 1) : 8, (0, 2) : 4,
+            (1, -2) : 2, (1, -1) : 4, (1, 0) : 8, (1, 1) : 4, (1, 2) : 2,
+        }
+    sierra3 = \
+        {
+                                                  (0, 1) : 5, (0, 2) : 3,
+            (1, -2) : 2, (1, -1) : 4, (1, 0) : 5, (1, 1) : 4, (1, 2) : 2,
+                         (2, -1) : 2, (2, 0) : 3, (2, 1) : 2,
+        }
+    sierra2 = \
+        {
+                                                  (0, 1) : 4, (0, 2) : 3,
+            (1, -2) : 1, (1, -1) : 2, (1, 0) : 3, (1, 1) : 2, (1, 2) : 1,
+        }
+    sierra2_4a = \
+        {
+                                     (0, 1) : 2,
+            (1, -1) : 1, (1, 0) : 1,
+        }
+    sierra_lite = sierra2_4a
 
 #end diffusion
 
@@ -315,7 +349,7 @@ def ordered_dither_image(matrix, depth, src_img, src_bounds, dst_img, dst_bounds
 
 def diffusion_dither_image(dither, depth, src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
     "dithers src_image into the corresponding components of dst_img using the specified" \
-    " 4-tuple of relative diffusion weights, according to the booleans do_a, do_r, do_g" \
+    " dict of relative diffusion weights, according to the booleans do_a, do_r, do_g" \
     " and do_b. src_img and dst_img may be the same image."
     srcchan, dstchan = construct_channels(src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b)
     diffusion_dither \
