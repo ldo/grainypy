@@ -49,8 +49,37 @@ typedef struct
 
 typedef struct
   {
-    float right, lowerleft, lower, lowerright; /* error-propagation weights, normalized so they sum to 1 */
+    int leftcol; /* likely negative */
+    /* toprow always 0 */
+    uint nr_rows, nr_cols;
+    float ** elts; /* pointers to column 0 on each row, index by [row][col] */
+    float * storage; /* pointer to actual storage allocated */
   } diffusion_dither_matrix_t;
+
+static void init_diffusion_dither_matrix
+  (
+    diffusion_dither_matrix_t * dither
+  )
+  /* initializes dither to indicate no storage is allocated. */
+  {
+    dither->storage = 0;
+    dither->elts = 0;
+  /* following not necessary, but just in case */
+    dither->leftcol = 0;
+    dither->nr_rows = 0;
+    dither->nr_cols = 0;
+  } /*init_diffusion_dither_matrix*/
+
+static void dispose_diffusion_dither_matrix
+  (
+    diffusion_dither_matrix_t * dither
+  )
+  /* disposes of storage allocated for dither. */
+  {
+    free(dither->storage);
+    free(dither->elts);
+    init_diffusion_dither_matrix(dither);
+  } /*dispose_diffusion_dither_matrix*/
 
 static bool get_channel
   (
@@ -214,134 +243,306 @@ static bool get_diffusion_dither_matrix
     bool required, /* indicates obj cannot be None for no matrix */
     diffusion_dither_matrix_t * mat
   )
-  /* extracts the fields from a 4-tuple and fills in mat with the results. returns
-    true iff obj was present. */
+  /* extracts the keys and values from a dict and fills in mat with the results.
+    returns true iff obj was present. On success, mat->nr_rows and mat->nr_cols
+    will not be 0. */
   {
     bool gotit = false;
+    init_diffusion_dither_matrix(mat);
     if (required or obj != 0 and obj != Py_None)
       {
-        float total;
+        float total = 0;
+        PyObject * keys = 0;
+        PyObject * values = 0;
+        bool success = false;
         do /*once*/
           {
+            keys = PyDict_Keys(obj);
+            if (PyErr_Occurred())
+                break;
+            values = PyDict_Values(obj);
+            if (PyErr_Occurred())
+                break;
+            const ssize_t nr_keys = PyList_GET_SIZE(keys);
+            if (nr_keys <= 0) /* shouldn’t be negative! */
               {
-                const Py_ssize_t nrelts = PyTuple_Size(obj);
+                PyErr_SetString(PyExc_ValueError, "empty diffusion matrix");
+                break;
+              } /*if*/
+            for (bool extracting = false;;)
+              {
+                for (uint keyindex = 0;;)
+                  {
+                    if (keyindex == nr_keys)
+                        break;
+                    int col, row;
+                    PyObject * const keyobj = PyList_GetItem(keys, keyindex);
+                      /* borrowed reference, valid as long as keys is valid */
+                    if (PyErr_Occurred())
+                        break;
+                    if (not extracting)
+                      {
+                      /* first pass: validate keys of dither dict */
+                        const uint nrdims = PyTuple_Size(keyobj);
+                        if (PyErr_Occurred())
+                            break;
+                        if (nrdims != 2)
+                          {
+                            PyErr_SetString
+                              (
+                                PyExc_ValueError,
+                                "diffusion matrix keys must be 2-tuples"
+                              );
+                            break;
+                          } /*if*/
+                      } /*if*/
+                      {
+                        PyObject * const rowobj = PyTuple_GetItem(keyobj, 0);
+                          /* borrowed reference, valid as long as keyobj is valid */
+                        if (PyErr_Occurred())
+                            break;
+                        row = PyLong_AsLong(rowobj);
+                        if (PyErr_Occurred())
+                            break;
+                        if (not extracting)
+                          {
+                          /* first pass: work out dimensions of matrix */
+                            if (row < 0)
+                              {
+                                PyErr_SetString
+                                  (
+                                    PyExc_ValueError,
+                                    "diffusion matrix row coords cannot be negative"
+                                  );
+                                break;
+                              } /*if*/
+                            if (keyindex == 0 or row >= mat->nr_rows)
+                              {
+                                mat->nr_rows = row + 1;
+                              } /*if*/
+                          } /*if*/
+                      }
+                      {
+                        PyObject * const colobj = PyTuple_GetItem(keyobj, 1);
+                          /* borrowed reference, valid as long as keyobj is valid */
+                        if (PyErr_Occurred())
+                            break;
+                        col = PyLong_AsLong(colobj);
+                        if (PyErr_Occurred())
+                            break;
+                        if (not extracting)
+                          {
+                          /* first pass: work out dimensions of matrix */
+                            if (row == 0 and col <= 0)
+                              {
+                                PyErr_SetString
+                                  (
+                                    PyExc_ValueError,
+                                    "diffusion matrix column coords must be positive on row 0"
+                                  );
+                                break;
+                              } /*if*/
+                            if (keyindex == 0)
+                              {
+                                mat->leftcol = col;
+                                mat->nr_cols = 1;
+                              }
+                            else
+                              {
+                                if (col < mat->leftcol)
+                                  {
+                                    mat->nr_cols += mat->leftcol - col;
+                                    mat->leftcol = col;
+                                  }
+                                else if (col - mat->leftcol >= mat->nr_cols)
+                                  {
+                                    mat->nr_cols = col - mat->leftcol + 1;
+                                  } /*if*/
+                              } /*if*/
+                          } /*if*/
+                      }
+                      {
+                        PyObject * const valobj = PyList_GetItem(values, keyindex);
+                          /* borrowed reference, valid as long as values is valid */
+                        if (PyErr_Occurred())
+                            break;
+                        float const val = (float)PyFloat_AsDouble(valobj);
+                        if (PyErr_Occurred())
+                            break;
+                        if (extracting)
+                          {
+                          /* second pass: fill in matrix */
+                          /* any unassigned elements will remain at zero, thanks to calloc */
+                            mat->elts[row][col] = val / total;
+                          }
+                        else
+                          {
+                          /* first pass: work out normalization total */
+                            total += val;
+                          } /*if*/
+                      }
+                    ++keyindex;
+                  } /*for*/
                 if (PyErr_Occurred())
                     break;
-                if (nrelts != 4)
+                if (extracting)
+                  /* finished second pass */
+                    break;
+                extracting = true;
+              /* finished first pass: allocate storage for matrix */
+                mat->storage = calloc(mat->nr_cols * mat->nr_rows + mat->leftcol - 1, sizeof(float));
+                if (mat->storage == 0)
                   {
-                    PyErr_SetString
-                      (
-                        PyExc_ValueError,
-                        "diffusion matrix tuple must have 4 elements"
-                      );
+                    PyErr_NoMemory();
                     break;
                   } /*if*/
-              }
-            total = 0;
-            for (uint index = 0;;)
-              {
-                if (index == 4)
-                    break;
-                PyObject * const elt = PyTuple_GetItem(obj, index);
-                  /* borrowed reference, valid as long as obj is valid */
-                if (PyErr_Occurred())
-                    break;
-                const float val = (float)PyFloat_AsDouble(elt);
-                if (PyErr_Occurred())
-                    break;
-                if (val < 0)
+                mat->elts = calloc(mat->nr_rows, sizeof(float *));
+                if (mat->elts == 0)
                   {
-                    PyErr_SetString(PyExc_ValueError, "dither weights cannot be negative");
+                    PyErr_NoMemory();
                     break;
                   } /*if*/
-                ++index;
-                switch (index)
                   {
-                case 1:
-                    mat->right = val;
-                break;
-                case 2:
-                    mat->lowerleft = val;
-                break;
-                case 3:
-                    mat->lower = val;
-                break;
-                case 4:
-                    mat->lowerright = val;
-                break;
-                  } /*switch*/
-                total += val;
+                  /* set up elts pointers into rows */
+                    int col0, step;
+                    col0 = - 1; /* row 0 has all positive-column coefficients */
+                    step = 2 - mat->leftcol;
+                    for (uint row = 0; row != mat->nr_rows; ++row)
+                      {
+                        mat->elts[row] = mat->storage + col0; /* location of column 0 */
+                        col0 += step;
+                        step = mat->nr_cols; /* remaining rows are full-width */
+                      } /*for*/
+                  }
+              /* now go back and fill it in */
               } /*for*/
             if (PyErr_Occurred())
                 break;
-            if (total == 0)
-              {
-                PyErr_SetString(PyExc_ZeroDivisionError, "dither weights add up to zero");
-                break;
-              } /*if*/
-          /* normalize */
-            mat->right /= total;
-            mat->lowerleft /= total;
-            mat->lower /= total;
-            mat->lowerright /= total;
           /* all done */
+            success = true;
             gotit = true;
           }
         while (false);
+        Py_XDECREF(keys);
+        Py_XDECREF(values);
+        if (not success)
+          {
+          /* get rid of any partial allocation */
+            dispose_diffusion_dither_matrix(mat);
+          } /*if*/
       } /*if*/
     return
         gotit;
   } /*get_diffusion_dither_matrix*/
 
-static float * get_diffusion_errors
+static float ** get_diffusion_errors
   (
     PyObject * obj, /* can be None to default to all zeroes */
-    uint width
+    uint width,
+    const diffusion_dither_matrix_t * dither, /* needed to determine dimensions of errors tuples */
+    float ** storage /* all array elements allocated contiguously here for easy disposal */
   )
+  /* decodes a tuple of dither->nr_rows - 1 tuples, each of width + dither->nr_cols - 1 floats,
+    being the errors from a previous diffusion dither operation to propagate into the
+    top rows of this operation. If obj is None, then the result arrays are still allocated,
+    but left filled with zeroes.
+    returns array[dither->nr_rows][width + dither->nr_cols - 1], the extra bottom
+    row being used to accumulate new errors during the dither operation. */
   {
-    float * result = 0;
-    float * tempresult = 0;
+    const uint nr_cols = width + dither->nr_cols - 1;
+    float ** result = 0;
+    float * tempstorage = 0;
+    float ** tempresult = 0;
+    *storage = 0; /* to begin with */
     do /*once*/
       {
-        tempresult = calloc(width + 2, sizeof(float)); /* first and last elements always initially zero */
+        tempstorage = calloc(dither->nr_rows * nr_cols, sizeof(float));
+        if (tempstorage == 0)
+          {
+            PyErr_NoMemory();
+            break;
+          } /*if*/
+        tempresult = calloc(dither->nr_rows, sizeof(float *));
         if (tempresult == 0)
           {
             PyErr_NoMemory();
             break;
           } /*if*/
+        for (uint row = 0; row != dither->nr_rows; ++row)
+          {
+            tempresult[row] = tempstorage + row * nr_cols - dither->leftcol;
+              /* indexable by col >= dither->leftcol */
+          } /*for*/
         if (obj != Py_None)
           {
               {
                 const Py_ssize_t nrelts = PyTuple_Size(obj);
                 if (PyErr_Occurred())
                     break;
-                if (nrelts != width)
+                if (nrelts != dither->nr_rows - 1)
                   {
-                    PyErr_Format(PyExc_ValueError, "errors tuple must have %d elements", width);
+                    PyErr_Format
+                      (
+                        PyExc_ValueError,
+                        "errors tuple must have %d %s",
+                        dither->nr_rows - 1,
+                        dither->nr_rows > 2 ? "elements" : "element"
+                      );
                     break;
                   } /*if*/
               }
-            for (uint index = 0;;)
+            for (uint row = 0;;)
               {
-                if (index == width)
+                if (row == dither->nr_rows - 1)
                     break;
-                PyObject * const elt = PyTuple_GetItem(obj, index);
-                  /* borrowed reference, valid as long as part is valid */
+                PyObject * const rowobj = PyTuple_GetItem(obj, row);
+                  /* borrowed reference, valid as long as obj is valid */
                 if (PyErr_Occurred())
                     break;
-                tempresult[index + 1] = (float)PyFloat_AsDouble(elt);
+                  {
+                    const Py_ssize_t nrelts = PyTuple_Size(rowobj);
+                    if (PyErr_Occurred())
+                        break;
+                    if (nrelts != width)
+                      {
+                        PyErr_Format
+                          (
+                            PyExc_ValueError,
+                            "row %d of errors tuple must have %d elements",
+                            row, width
+                          );
+                        break;
+                      } /*if*/
+                  }
+                for (uint col = 0;;)
+                  {
+                    if (col == width)
+                        break;
+                    PyObject * const elt = PyTuple_GetItem(rowobj, col);
+                      /* borrowed reference, valid as long as rowobj is valid */
+                    if (PyErr_Occurred())
+                        break;
+                    tempresult[row][col] = (float)PyFloat_AsDouble(elt);
+                    if (PyErr_Occurred())
+                        break;
+                    ++col;
+                  } /*for*/
                 if (PyErr_Occurred())
                     break;
-                ++index;
+                ++row;
               } /*for*/
             if (PyErr_Occurred())
                 break;
           } /*if*/
       /* all done */
         result = tempresult;
-        tempresult = 0; /* so I don't dispose of it yet */
+        *storage = tempstorage;
+        tempstorage = 0; /* so I don't dispose of it yet */
+        tempresult = 0;
       }
     while (false);
+    free(tempstorage);
+    free(tempresult);
     return
         result;
   } /*get_diffusion_errors*/
@@ -349,30 +550,46 @@ static float * get_diffusion_errors
 static PyObject * put_diffusion_errors
   (
     uint width,
-    const float * errors /* array[width + 2], first and last elements ignored */
+    const diffusion_dither_matrix_t * dither, /* needed to determine dimensions of errors tuples */
+    float ** errors /* array[>= dither->nr_rows - 1][width + dither->nr_cols - 1], column coordinates < 0 or >= width ignored */
   )
-  /* encodes errors into a tuple for returning to Python code. */
+  /* encodes errors into a tuple of tuples of floats for returning to Python code. */
   {
     PyObject * result = 0;
     PyObject * tempresult = 0;
+    PyObject * temprow = 0;
     do /*once*/
       {
-        tempresult = PyTuple_New(width);
+        tempresult = PyTuple_New(dither->nr_rows - 1);
         if (PyErr_Occurred())
             break;
-        for (uint index = 0;;)
+        for (uint row = 0;;)
           {
-            if (index == width)
+            if (row == dither->nr_rows - 1)
                 break;
-            PyTuple_SET_ITEM
-              (
-                tempresult,
-                index,
-                PyFloat_FromDouble(errors[index + 1])
-              );
+            temprow = PyTuple_New(width);
             if (PyErr_Occurred())
                 break;
-            ++index;
+            for (uint col = 0;;)
+              {
+                if (col == width)
+                    break;
+                PyTuple_SET_ITEM
+                  (
+                    temprow,
+                    col,
+                    PyFloat_FromDouble(errors[row][col])
+
+                  );
+                if (PyErr_Occurred())
+                    break;
+                ++col;
+              } /*for*/
+            if (PyErr_Occurred())
+                break;
+            PyTuple_SET_ITEM(tempresult, row, temprow);
+            temprow = 0; /* do I don’t dispose of it yet */
+            ++row;
           } /*for*/
         if (PyErr_Occurred())
             break;
@@ -381,6 +598,7 @@ static PyObject * put_diffusion_errors
         tempresult = 0; /* so I don’t dispose of it yet */
       }
     while (false);
+    Py_XDECREF(temprow);
     Py_XDECREF(tempresult);
     return
         result;
@@ -605,12 +823,13 @@ static PyObject * grainyx_diffusion_dither
     PyObject * result = 0;
     diffusion_dither_matrix_t dither;
     uint to_depth;
-    float * errors[4] = {0, 0, 0, 0};
-    float * new_errors[4] = {0, 0, 0, 0};
+    float ** errors[4] = {0, 0, 0, 0};
+    float * errors_storage[4] = {0, 0, 0, 0};
     channel_t srcchan[4], dstchan[4];
     bool gotchan[4];
     channel_t * some_src;
     channel_t * some_dst;
+    init_diffusion_dither_matrix(&dither);
     do /*once*/
       {
           { /* get args */
@@ -715,7 +934,13 @@ static PyObject * grainyx_diffusion_dither
                             break;
                         if (gotchan[chan])
                           {
-                            errors[chan] = get_diffusion_errors(errorsobj[chan], some_src->width);
+                            errors[chan] = get_diffusion_errors
+                              (
+                                /*obj =*/ errorsobj[chan],
+                                /*width =*/ some_src->width,
+                                /*dither =*/ &dither,
+                                /*storage =*/ errors_storage + chan
+                              );
                             if (PyErr_Occurred())
                                 break;
                           } /*if*/
@@ -744,23 +969,6 @@ static PyObject * grainyx_diffusion_dither
             break;
           } /*if*/
         /* assert some_src and some_dst both not null */
-        for (uint chan = 0;;)
-          {
-            if (chan == 4)
-                break;
-            if (gotchan[chan])
-              {
-                new_errors[chan] = calloc(some_src->width + 2, sizeof(float));
-                if (new_errors[chan] == 0)
-                  {
-                    PyErr_NoMemory();
-                    break;
-                  } /*if*/
-              } /*if*/
-            ++chan;
-          } /*for*/
-        if (PyErr_Occurred())
-            break;
           { /* do the work */
             Py_BEGIN_ALLOW_THREADS
             const uint drop_bits = CPNT_BITS - to_depth;
@@ -780,9 +988,9 @@ static PyObject * grainyx_diffusion_dither
                   {
                     if (gotchan[chan])
                       {
-                        for (uint col = 0; col != width + 2; ++col)
+                        for (uint col = 0; col != width; ++col)
                           {
-                            new_errors[chan][col] = 0;
+                            errors[chan][dither.nr_rows - 1][col] = 0;
                           } /*for*/
                       } /*if*/
                   } /*for*/
@@ -801,16 +1009,23 @@ static PyObject * grainyx_diffusion_dither
                                       (
                                             (srcpixel >> srcchan[chan].shiftoffset & CPNT_MAX)
                                         +
-                                            errors[chan][col + 1] * error_scale,
+                                            errors[chan][0][col] * error_scale,
                                         CPNT_MAX
                                       )
                                   );
                             const pix_type dstval = srcval & keep_mask;
                             const float new_error = (srcval & drop_mask) / error_scale;
-                            new_errors[chan][col] += new_error * dither.lowerleft;
-                            new_errors[chan][col + 1] += new_error * dither.lower;
-                            new_errors[chan][col + 2] += new_error * dither.lowerright;
-                            errors[chan][col + 2] += new_error * dither.right;
+                            for (uint drow = 0; drow != dither.nr_rows; ++drow)
+                              {
+                                for (uint ecol = 0; ecol != dither.nr_cols; ++ecol)
+                                  {
+                                    const int dcol = (int)ecol + dither.leftcol;
+                                    if (drow != 0 or dcol > 0)
+                                      {
+                                        errors[chan][drow][(int)col + dcol] += new_error * dither.elts[drow][dcol];
+                                      } /*for*/
+                                  } /*for*/
+                              } /*for*/
                             dstpixel =
                                     dstpixel & ~(CPNT_MAX << dstchan[chan].shiftoffset)
                                 |
@@ -823,10 +1038,12 @@ static PyObject * grainyx_diffusion_dither
                   {
                     if (gotchan[chan])
                       {
-                      /* new_errors becomes errors for next row */
-                        float * const temp = new_errors[chan];
-                        new_errors[chan] = errors[chan];
-                        errors[chan] = temp;
+                        float * const rotate_row = errors[chan][0];
+                        for (uint row = 0; row != dither.nr_rows - 1; ++row)
+                          {
+                            errors[chan][row] = errors[chan][row + 1];
+                          } /*for*/
+                        errors[chan][dither.nr_rows - 1] = rotate_row;
                       } /*if*/
                   } /*for*/
               } /*for*/
@@ -850,7 +1067,7 @@ static PyObject * grainyx_diffusion_dither
                           (
                             tempresult,
                             chan,
-                            put_diffusion_errors(some_src->width, errors[chan])
+                            put_diffusion_errors(some_src->width, &dither, errors[chan])
                           );
                         if (PyErr_Occurred())
                             break;
@@ -878,8 +1095,9 @@ static PyObject * grainyx_diffusion_dither
     for (uint chan = 0; chan != 4; ++chan)
       {
         free(errors[chan]);
-        free(new_errors[chan]);
+        free(errors_storage[chan]);
       } /*for*/
+    dispose_diffusion_dither_matrix(&dither);
     return
         result;
   } /*grainyx_diffusion_dither*/
@@ -1174,7 +1392,7 @@ static PyObject * grainyx_channel_op
                       {
                         if (gotchan[chan])
                           {
-                            const uint srclmask = (1 << srcl[chan].bitwidth) - 1; 
+                            const uint srclmask = (1 << srcl[chan].bitwidth) - 1;
                             const uint srcrmask = (1 << srcr[chan].bitwidth) - 1;
                             const uint dstmask =
                                 (1 << dst[chan].bitwidth) - 1 << dst[chan].shiftoffset;

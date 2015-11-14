@@ -282,6 +282,20 @@ def construct_channels(src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_
         srcchan, dstchan
 #end construct_channels
 
+class diffusion :
+    "various useful error-diffusion matrices."
+
+    floyd_steinberg = {(0, 1) : 7, (1, -1) : 3, (1, 0) : 5, (1, 1) : 1}
+    jarvis_judice_ninke = \
+        {
+            (0, 1) : 7, (1, 1) : 5,
+            (1, -2) : 3, (1, -1) : 5, (1, 0) : 7, (1, 1) : 5, (1, 2) : 3,
+            (1, -2) : 1, (1, -1) : 3, (1, 0) : 5, (1, 1) : 3, (1, 2) : 1,
+        }
+    stucki_lite = {(0, 1) : 2, (1, -1) : 1, (1, 0) : 1}
+
+#end diffusion
+
 def ordered_dither_image(matrix, depth, src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
     "dithers src_image into the corresponding components of dst_img using the specified" \
     " DitherMatrix, according to the booleans do_a, do_r, do_g and do_b. src_img and dst_img" \
