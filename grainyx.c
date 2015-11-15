@@ -1211,9 +1211,13 @@ static PyObject * grainyx_copy_channel
                             dstval = dstrow[col];
                           } /*if*/
                         srcval =
-                                srcval * maskval / maskmax
-                            +
-                                dstval * (maskmax - maskval) / maskmax;
+                                (
+                                    srcval * maskval
+                                +
+                                    dstval * (maskmax - maskval)
+                                )
+                            /
+                                maskmax;
                       } /*if*/
                       {
                         uint dstval;
