@@ -221,23 +221,30 @@ ordered_dither = grainyx.ordered_dither
 diffusion_dither = grainyx.diffusion_dither
 channel_op = grainyx.channel_op
 
-def copy_image_channel(src_img, src_component, dst_img, dst_component) :
+def copy_image_channel(src_img, src_component, mask_img, mask_component, dst_img, dst_component) :
     "copies a specified component from a source image to a component of a destination" \
-    " image. src_image and dst_img must be qahirah.ImageSurface instances, while" \
-    " src_component and dst_component must be CAIRO_PIX.xxx values selecting" \
-    " the corresponding components."
+    " image, optionally masked by a mask component. src_image, mask_image (if not None) and" \
+    " dst_img must be qahirah.ImageSurface instances, while src_component, mask_component" \
+    " (if not None) and dst_component must be CAIRO_PIX.xxx values selecting the corresponding" \
+    " components."
     if (
             not isinstance(src_img, qahirah.ImageSurface)
         or
+            mask_img != None and not isinstance(mask_img, qahirah.ImageSurface)
+        or
             not isinstance(dst_img, qahirah.ImageSurface)
     ) :
-        raise TypeError("src_img and dst_img must be qahirah.ImageSurface instances")
+        raise TypeError("src_img, mask_img and dst_img must be qahirah.ImageSurface instances")
     #end if
     src_img.flush()
+    if mask_img != None :
+        mask_img.flush()
+    #end if
     dst_img.flush()
     copy_channel \
       (
         cairo_component(src_img, src_component), # src
+        (lambda : None, lambda : cairo_component(mask_img, mask_component))[mask_img != None](), # mask
         cairo_component(dst_img, dst_component), # dst
       )
     dst_img.mark_dirty()

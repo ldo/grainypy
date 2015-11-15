@@ -1113,20 +1113,26 @@ static PyObject * grainyx_copy_channel
   )
   {
     PyObject * result = 0;
-    channel_t src, dst;
+    channel_t src, mask, dst;
+    bool got_mask;
     do /*once*/
       {
           {
             PyObject * srcobj = 0;
+            PyObject * maskobj = 0;
             PyObject * dstobj = 0;
             do /*once*/
               {
-                const bool success = PyArg_ParseTuple(args, "OO", &srcobj, &dstobj);
+                const bool success = PyArg_ParseTuple(args, "OOO", &srcobj, &maskobj, &dstobj);
                 Py_XINCREF(srcobj);
+                Py_XINCREF(maskobj);
                 Py_XINCREF(dstobj);
                 if (not success)
                     break;
                 get_channel(srcobj, true, 0, &src);
+                if (PyErr_Occurred())
+                    break;
+                got_mask = get_channel(maskobj, false, 0, &mask);
                 if (PyErr_Occurred())
                     break;
                 get_channel(dstobj, true, 0, &dst);
@@ -1135,6 +1141,7 @@ static PyObject * grainyx_copy_channel
               }
             while (false);
             Py_XDECREF(srcobj);
+            Py_XDECREF(maskobj);
             Py_XDECREF(dstobj);
           }
         if (PyErr_Occurred())
@@ -1159,6 +1166,7 @@ static PyObject * grainyx_copy_channel
             for (uint row = 0; row != src.height; ++row)
               {
                 const uint8_t * const srcrow = src.baseaddr + row * src.stride;
+                const uint8_t * const maskrow = got_mask ? mask.baseaddr + row * mask.stride : 0;
                 uint8_t * const dstrow = dst.baseaddr + row * dst.stride;
                 for (uint col = 0; col != src.width; ++col)
                   {
@@ -1174,6 +1182,24 @@ static PyObject * grainyx_copy_channel
                       {
                       /* assume src.shiftoffset = 0 and src.bitwidth = 8 */
                         val = srcrow[col];
+                      } /*if*/
+                    if (got_mask)
+                      {
+                        uint maskval;
+                        const uint maskmax = (1 << mask.bitwidth) - 1;
+                        if (mask.depth == 4)
+                          {
+                            maskval =
+                                    ((uint32_t *)maskrow)[col] >> mask.shiftoffset
+                                &
+                                    maskmax;
+                          }
+                        else /* mask.depth = 1 */
+                          {
+                          /* assume mask.shiftoffset = 0 and mask.bitwidth = 8 */
+                            maskval = maskrow[col];
+                          } /*if*/
+                        val = val * maskval / maskmax;
                       } /*if*/
                     if (dst.depth == 4)
                       {
@@ -1481,10 +1507,10 @@ static PyMethodDef grainyx_methods[] =
         " row of pixels."
     },
     {"copy_channel", grainyx_copy_channel, METH_VARARGS,
-        "copy_channel(src_channel, dst_channel)\n"
-        "copies the contents of one Channel instance to another. You may copy"
-        " between two channels of the same pixmap, but the pixmaps should not otherwise"
-        " overlap."
+        "copy_channel(src_channel, mask_channel, dst_channel)\n"
+        "copies the contents of Channel instance src_channel to dst_channel, optionally " \
+        " masked by mask_channel. You may copy between two channels of the same pixmap, but the" \
+        " pixmaps should not otherwise overlap."
     },
     {"channel_op", grainyx_channel_op, METH_VARARGS,
         "channel_op(table, srcl1 = None, srcr1 = None, dst1 = None, srcl2 = None,"
