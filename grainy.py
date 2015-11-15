@@ -393,20 +393,25 @@ def bool_op_table(table, depth) :
           )
 #end bool_op_table
 
-def wraparound_arith_op_table(func, depth) :
+def arith_op_table(func, depth, wrap) :
     "given func being a function of two arguments in [0 .. 1], constructs a lookup table" \
-    " suitable for passing to channel_op by taking the remainder of the result on division" \
-    " by 1.0 (i.e. wrapping out-of-range values) and mapping it to pixel values in" \
-    " [0 .. (1 << depth) - 1]."
+    " suitable for passing to channel_op by mapping the function result to pixel values in" \
+    " [0 .. (1 << depth) - 1]. If wrap, then out-of-range values are wrapped, else they are" \
+    " clipped."
     cpnt_max = (1 << depth) - 1
     return \
         tuple \
           (
-            round(func(pixl / cpnt_max, pixr / cpnt_max) * cpnt_max) % (cpnt_max + 1)
+            (
+                lambda pixl, pixr :
+                    round(min(max(func(pixl / cpnt_max, pixr / cpnt_max), 0), 1) * cpnt_max),
+                lambda pixl, pixr :
+                    round(func(pixl / cpnt_max, pixr / cpnt_max) * cpnt_max) % (cpnt_max + 1)
+            )[wrap](pixl, pixr)
             for pixl in range(1 << depth)
             for pixr in range(1 << depth)
           )
-#end wraparound_arith_op_table
+#end arith_op_table
 
 def image_channel_op(op_table, srcl_img, srcl_bounds, srcr_img, srcr_bounds, mask_img, mask_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
     "performs the channel op defined by op_table on srcl_img and srcr_img optionally masked" \
