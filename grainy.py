@@ -393,13 +393,15 @@ def bool_op_table(table, depth) :
           )
 #end bool_op_table
 
-def image_channel_op(op_table, srcl_img, srcl_bounds, srcr_img, srcr_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
-    "performs the channel op defined by op_table on srcl_img and srcr_img, putting the" \
-    " results into dst_img."
+def image_channel_op(op_table, srcl_img, srcl_bounds, srcr_img, srcr_bounds, mask_img, mask_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
+    "performs the channel op defined by op_table on srcl_img and srcr_img optionally masked" \
+    " by mask_img, putting the results into dst_img."
     if (
             not isinstance(srcl_img, qahirah.ImageSurface)
         or
             not isinstance(srcr_img, qahirah.ImageSurface)
+        or
+            mask_img != None and not isinstance(mask_img, qahirah.ImageSurface)
         or
             not isinstance(dst_img, qahirah.ImageSurface)
     ) :
@@ -407,9 +409,13 @@ def image_channel_op(op_table, srcl_img, srcl_bounds, srcr_img, srcr_bounds, dst
     #end if
     srcl_img.flush()
     srcr_img.flush()
+    if mask_img != None :
+        mask_img.flush()
+    #end if
     dst_img.flush()
     srclchan = [None] * 4
     srcrchan = [None] * 4
+    maskchan = [None] * 4
     dstchan = [None] * 4
     nr_components = 0
     for \
@@ -431,6 +437,12 @@ def image_channel_op(op_table, srcl_img, srcl_bounds, srcr_img, srcr_bounds, dst
             if srcr_bounds != None :
                 srcrchan[nr_components] = srcrchan[nr_components].subrect(srcr_bounds)
             #end if
+            if mask_img != None :
+                maskchan[nr_components] = cairo_component(mask_img, component)
+                if mask_bounds != None :
+                    maskchan[nr_components] = maskchan[nr_components].subrect(mask_bounds)
+                #end if
+            #end if
             dstchan[nr_components] = cairo_component(dst_img, component)
             if dst_bounds != None :
                 dstchan[nr_components] = dstchan[nr_components].subrect(dst_bounds)
@@ -441,10 +453,10 @@ def image_channel_op(op_table, srcl_img, srcl_bounds, srcr_img, srcr_bounds, dst
     channel_op \
       (
         op_table,
-        srclchan[0], srcrchan[0], dstchan[0],
-        srclchan[1], srcrchan[1], dstchan[1],
-        srclchan[2], srcrchan[2], dstchan[2],
-        srclchan[3], srcrchan[3], dstchan[3],
+        srclchan[0], srcrchan[0], maskchan[0], dstchan[0],
+        srclchan[1], srcrchan[1], maskchan[1], dstchan[1],
+        srclchan[2], srcrchan[2], maskchan[2], dstchan[2],
+        srclchan[3], srcrchan[3], maskchan[3], dstchan[3],
       )
     #end for
     dst_img.mark_dirty()

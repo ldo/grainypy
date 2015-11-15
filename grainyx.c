@@ -1254,10 +1254,11 @@ static PyObject * grainyx_channel_op
   {
     PyObject * result = 0;
     cpnt_t * table = 0;
-    channel_t srcl[4], srcr[4], dst[4];
-    bool gotchan[4];
+    channel_t srcl[4], srcr[4], mask[4], dst[4];
+    bool gotchan[4], gotmask[4];
     const channel_t * some_srcl;
     const channel_t * some_srcr;
+    const channel_t * some_mask;
     const channel_t * some_dst;
     do /*once*/
       {
@@ -1265,18 +1266,19 @@ static PyObject * grainyx_channel_op
             PyObject * tableobj = 0;
             PyObject * srclobj[4] = {0, 0, 0, 0};
             PyObject * srcrobj[4] = {0, 0, 0, 0};
+            PyObject * maskobj[4] = {0, 0, 0, 0};
             PyObject * dstobj[4] = {0, 0, 0, 0};
             uint table_size;
             do /*once*/
               {
                 const bool success = PyArg_ParseTuple
                   (
-                    args, "O|OOOOOOOOOOOO",
+                    args, "O|OOOOOOOOOOOOOOOO",
                     &tableobj,
-                    srclobj + 0, srcrobj + 0, dstobj + 0,
-                    srclobj + 1, srcrobj + 1, dstobj + 1,
-                    srclobj + 2, srcrobj + 2, dstobj + 2,
-                    srclobj + 3, srcrobj + 3, dstobj + 3
+                    srclobj + 0, srcrobj + 0, maskobj + 0, dstobj + 0,
+                    srclobj + 1, srcrobj + 1, maskobj + 1, dstobj + 1,
+                    srclobj + 2, srcrobj + 2, maskobj + 2, dstobj + 2,
+                    srclobj + 3, srcrobj + 3, maskobj + 3, dstobj + 3
                   );
                 Py_XINCREF(tableobj);
               /* replace omitted arguments with None to simplify checks */
@@ -1294,8 +1296,13 @@ static PyObject * grainyx_channel_op
                       {
                         dstobj[chan] = Py_None;
                       } /*if*/
+                    if (maskobj[chan] == 0)
+                      {
+                        maskobj[chan] = Py_None;
+                      } /*if*/
                     Py_INCREF(srclobj[chan]);
                     Py_INCREF(srcrobj[chan]);
+                    Py_INCREF(maskobj[chan]);
                     Py_INCREF(dstobj[chan]);
                   } /*for*/
                 if (not success)
@@ -1324,6 +1331,7 @@ static PyObject * grainyx_channel_op
                     break;
                 some_srcl = 0;
                 some_srcr = 0;
+                some_mask = 0;
                 some_dst = 0;
                 for (uint chan = 0;;)
                   {
@@ -1337,11 +1345,18 @@ static PyObject * grainyx_channel_op
                         get_channel(srcrobj[chan], true, some_srcr, srcr + chan);
                         if (PyErr_Occurred())
                             break;
+                        gotmask[chan] = get_channel(maskobj[chan], false, some_mask, mask + chan);
+                        if (PyErr_Occurred())
+                            break;
                         get_channel(dstobj[chan], true, some_dst, dst + chan);
                         if (PyErr_Occurred())
                             break;
                         some_srcl = srcl + chan; /* in case not already set */
                         some_srcr = srcr + chan;
+                        if (gotmask[chan])
+                          {
+                            some_mask = mask + chan;
+                          } /*if*/
                         some_dst = dst + chan;
                       } /*if*/
                     ++chan;
@@ -1355,12 +1370,14 @@ static PyObject * grainyx_channel_op
                             some_srcl->bitwidth != some_srcr->bitwidth
                         or
                             some_srcr->bitwidth != some_dst->bitwidth
+                        or
+                            some_mask != 0 and some_mask->bitwidth != some_dst->bitwidth
                       )
                       {
                         PyErr_SetString
                           (
                             PyExc_ValueError,
-                            "srcl, srcr and dst must all have same bitwidth"
+                            "srcl, srcr, mask and dst must all have same bitwidth"
                           );
                         break;
                       } /*if*/
@@ -1374,6 +1391,8 @@ static PyObject * grainyx_channel_op
                             some_srcl->depth != 1 and some_srcl->depth != 4
                         or
                             some_srcr->depth != 1 and some_srcr->depth != 4
+                        or
+                            some_mask != 0 and some_mask->depth != 1 and some_mask->depth != 4
                         or
                             some_dst->depth != 1 and some_dst->depth != 4
                       )
@@ -1415,6 +1434,7 @@ static PyObject * grainyx_channel_op
               {
                 Py_XDECREF(srclobj[chan]);
                 Py_XDECREF(srcrobj[chan]);
+                Py_XDECREF(maskobj[chan]);
                 Py_XDECREF(dstobj[chan]);
               } /*for*/
           }
@@ -1433,6 +1453,8 @@ static PyObject * grainyx_channel_op
               {
                 const cpnt_t * const srclrow = some_srcl->baseaddr + row * some_srcl->stride;
                 const cpnt_t * const srcrrow = some_srcr->baseaddr + row * some_srcr->stride;
+                const cpnt_t * const maskrow =
+                    some_mask != 0 ? some_mask->baseaddr + row * some_mask->stride : 0;
                 cpnt_t * const dstrow = some_dst->baseaddr + row * some_dst->stride;
                 for (uint col = 0; col != some_srcl->width; ++col)
                   {
@@ -1459,25 +1481,47 @@ static PyObject * grainyx_channel_op
                                     ((uint32_t *)dstrow)[col]
                                 : /* dst[chan].depth = 1 */
                                     dstrow[col];
+                            uint val =
+                                table
+                                    [
+                                            (
+                                                srclpix >> srcl[chan].shiftoffset
+                                            &
+                                                srclmask
+                                            )
+                                        <<
+                                            srcr[chan].bitwidth
+                                    |
+                                        srcrpix >> srcr[chan].shiftoffset & srcrmask
+                                    ];
+                            if (gotmask[chan])
+                              {
+                                const uint maskmask = (1 << mask[chan].bitwidth) - 1;
+                                const uint maskval =
+                                            (mask[chan].depth == 4 ?
+                                                ((uint32_t *)maskrow)[col]
+                                            : /* mask.depth = 1 */
+                                                maskrow[col]
+                                            )
+                                        >>
+                                            mask[chan].shiftoffset
+                                    &
+                                        maskmask;
+                                val =
+                                        (
+                                            val * maskval
+                                        +
+                                                ((dstpix & dstmask) >> dst[chan].shiftoffset)
+                                            *
+                                                (maskmask - maskval)
+                                        )
+                                    /
+                                        maskmask;
+                              } /*if*/
                             dstpix =
                                     dstpix & ~dstmask
                                 |
-                                            table
-                                                [
-                                                        (
-                                                            srclpix >> srcl[chan].shiftoffset
-                                                        &
-                                                            srclmask
-                                                        )
-                                                    <<
-                                                        srcl[chan].bitwidth
-                                                |
-                                                    srcrpix >> srcr[chan].shiftoffset & srcrmask
-                                                ]
-                                        <<
-                                            dst[chan].shiftoffset
-                                    &
-                                        dstmask;
+                                    val << dst[chan].shiftoffset & dstmask;
                             if (dst[chan].depth == 4)
                               {
                                 ((uint32_t *)dstrow)[col] = dstpix;
@@ -1531,9 +1575,9 @@ static PyMethodDef grainyx_methods[] =
         " pixmaps should not otherwise overlap."
     },
     {"channel_op", grainyx_channel_op, METH_VARARGS,
-        "channel_op(table, srcl1 = None, srcr1 = None, dst1 = None, srcl2 = None,"
-            " srcr2 = None, dst2 = None, srcl3 = None, srcr3 = None, dst3 = None,"
-            " srcl4 = None, srcr4 = None, dst4 = None)\n"
+        "channel_op(table, srcl1 = None, srcr1 = None, mask1 = None, dst1 = None, srcl2 = None,"
+            " srcr2 = None, mask2 = None, dst2 = None, srcl3 = None, srcr3 = None, mask3 = None," \
+            " dst3 = None, srcl4 = None, srcr4 = None, mask4 = None, dst4 = None)\n"
         "performs a general functional operation on component values from srcln and srcrn,"
         " putting the result into dstn, for up to 4 sets of sources and destinations. All the"
         " srcln channels must come the same pixmap; similarly all the srcr from the same pixmap,"
