@@ -1167,13 +1167,14 @@ static PyObject * grainyx_copy_channel
               {
                 const uint8_t * const srcrow = src.baseaddr + row * src.stride;
                 const uint8_t * const maskrow = got_mask ? mask.baseaddr + row * mask.stride : 0;
+                const uint maskmax = got_mask ? (1 << mask.bitwidth) - 1 : 0;
                 uint8_t * const dstrow = dst.baseaddr + row * dst.stride;
                 for (uint col = 0; col != src.width; ++col)
                   {
-                    uint val;
+                    uint srcval;
                     if (src.depth == 4)
                       {
-                        val =
+                        srcval =
                                 ((uint32_t *)srcrow)[col] >> src.shiftoffset
                             &
                                 (1 << src.bitwidth) - 1;
@@ -1181,12 +1182,11 @@ static PyObject * grainyx_copy_channel
                     else /* src.depth = 1 */
                       {
                       /* assume src.shiftoffset = 0 and src.bitwidth = 8 */
-                        val = srcrow[col];
+                        srcval = srcrow[col];
                       } /*if*/
                     if (got_mask)
                       {
-                        uint maskval;
-                        const uint maskmax = (1 << mask.bitwidth) - 1;
+                        uint maskval, dstval;
                         if (mask.depth == 4)
                           {
                             maskval =
@@ -1199,22 +1199,40 @@ static PyObject * grainyx_copy_channel
                           /* assume mask.shiftoffset = 0 and mask.bitwidth = 8 */
                             maskval = maskrow[col];
                           } /*if*/
-                        val = val * maskval / maskmax;
+                        if (dst.depth == 4)
+                          {
+                            dstval =
+                                    ((uint32_t *)dstrow)[col] >> dst.shiftoffset
+                                &
+                                    (1 << dst.bitwidth) - 1;
+                          }
+                        else /* dst.depth = 1 */
+                          {
+                            dstval = dstrow[col];
+                          } /*if*/
+                        srcval =
+                                srcval * maskval / maskmax
+                            +
+                                dstval * (maskmax - maskval) / maskmax;
                       } /*if*/
-                    if (dst.depth == 4)
                       {
-                        uint dstval = ((uint32_t *)dstrow)[col];
-                        dstval =
-                                dstval & ~((1 << dst.bitwidth) - 1 << dst.shiftoffset)
-                            |
-                                val << dst.shiftoffset;
-                        ((uint32_t *)dstrow)[col] = dstval;
+                        uint dstval;
+                        if (dst.depth == 4)
+                          {
+                            dstval =
+                                        ((uint32_t *)dstrow)[col]
+                                    &
+                                        ~((1 << dst.bitwidth) - 1 << dst.shiftoffset)
+                                |
+                                    srcval << dst.shiftoffset;
+                            ((uint32_t *)dstrow)[col] = dstval;
+                          }
+                        else /* dst.depth = 1 */
+                          {
+                          /* assume dst.shiftoffset = 0 and dst.bitwidth = 8 */
+                            dstrow[col] = srcval;
+                          } /*if*/
                       }
-                    else /* dst.depth = 1 */
-                      {
-                      /* assume dst.shiftoffset = 0 and dst.bitwidth = 8 */
-                        dstrow[col] = val;
-                      } /*if*/
                   } /*for*/
               } /*for*/
           }
