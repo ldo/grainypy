@@ -370,7 +370,7 @@ def diffusion_dither_image(dither, depth, src_img, src_bounds, dst_img, dst_boun
       )
 #end diffusion_dither_image
 
-def bool_channel_op(table, depth) :
+def bool_op_table(table, depth) :
     "constructs a lookup table suitable for passing to channel_op. table must be" \
     " a 4-tuple giving the destination pixel bit value where the corresponding srcl" \
     " and srcr pixel bit values are respectively (0, 0), (0, 1), (1, 0) and (1, 1)," \
@@ -391,7 +391,7 @@ def bool_channel_op(table, depth) :
             for pixl in range(1 << depth)
             for pixr in range(1 << depth)
           )
-#end bool_channel_op
+#end bool_op_table
 
 def image_channel_op(op_table, srcl_img, srcl_bounds, srcr_img, srcr_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
     "performs the channel op defined by op_table on srcl_img and srcr_img, putting the" \
