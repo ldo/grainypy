@@ -203,6 +203,11 @@ static void get_ordered_dither_matrix
             field = PyObject_GetAttrString(obj, "coeffs");
             if (PyErr_Occurred())
                 break;
+            if (not PyTuple_Check(field))
+              {
+                PyErr_SetString(PyExc_TypeError, "dither coeffs attribute must be tuple");
+                break;
+              } /*if*/
             for (uint row = 0;;)
               {
                 if (row == order)
@@ -257,6 +262,11 @@ static bool get_diffusion_dither_matrix
         bool success = false;
         do /*once*/
           {
+            if (not PyDict_Check(obj))
+              {
+                PyErr_SetString(PyExc_TypeError, "dither arg must be dict");
+                break;
+              } /*if*/
             keys = PyDict_Keys(obj);
             if (PyErr_Occurred())
                 break;
@@ -280,6 +290,11 @@ static bool get_diffusion_dither_matrix
                       /* borrowed reference, valid as long as keys is valid */
                     if (PyErr_Occurred())
                         break;
+                    if (not PyTuple_Check(keyobj))
+                      {
+                        PyErr_SetString(PyExc_TypeError, "dither coeff key must be tuple");
+                        break;
+                      } /*if*/
                     if (not extracting)
                       {
                       /* first pass: validate keys of dither dict */
@@ -475,6 +490,11 @@ static float ** get_diffusion_errors
           } /*for*/
         if (obj != Py_None)
           {
+            if (not PyTuple_Check(obj))
+              {
+                PyErr_SetString(PyExc_TypeError, "diffusion errors must be tuple");
+                break;
+              } /*if*/
               {
                 const Py_ssize_t nrelts = PyTuple_Size(obj);
                 if (PyErr_Occurred())
@@ -499,6 +519,11 @@ static float ** get_diffusion_errors
                   /* borrowed reference, valid as long as obj is valid */
                 if (PyErr_Occurred())
                     break;
+                if (not PyTuple_Check(rowobj))
+                  {
+                    PyErr_SetString(PyExc_TypeError, "diffusion errors rows must be tuple");
+                    break;
+                  } /*if*/
                   {
                     const Py_ssize_t nrelts = PyTuple_Size(rowobj);
                     if (PyErr_Occurred())
@@ -1333,6 +1358,11 @@ static PyObject * grainyx_channel_op
                   } /*for*/
                 if (PyErr_Occurred())
                     break;
+                if (not PyTuple_Check(tableobj))
+                  {
+                    PyErr_SetString(PyExc_TypeError, "op_table must be tuple");
+                    break;
+                  } /*if*/
                 some_srcl = 0;
                 some_srcr = 0;
                 some_mask = 0;
