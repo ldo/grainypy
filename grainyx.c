@@ -1275,7 +1275,7 @@ static PyObject * grainyx_copy_channel
         result;
   } /*grainyx_copy_channel*/
 
-static PyObject * grainyx_channel_op
+static PyObject * grainyx_channel_op_2
   (
     PyObject * self,
     PyObject * args
@@ -1578,7 +1578,7 @@ static PyObject * grainyx_channel_op
     free(table);
     return
         result;
-  } /*grainyx_channel_op*/
+  } /*grainyx_channel_op_2*/
 
 static PyMethodDef grainyx_methods[] =
   {
@@ -1608,8 +1608,8 @@ static PyMethodDef grainyx_methods[] =
         " masked by mask_channel. You may copy between two channels of the same pixmap, but the" \
         " pixmaps should not otherwise overlap."
     },
-    {"channel_op", grainyx_channel_op, METH_VARARGS,
-        "channel_op(table, srcl1 = None, srcr1 = None, mask1 = None, dst1 = None, srcl2 = None,"
+    {"channel_op_2", grainyx_channel_op_2, METH_VARARGS,
+        "channel_op_2(table, srcl1 = None, srcr1 = None, mask1 = None, dst1 = None, srcl2 = None,"
             " srcr2 = None, mask2 = None, dst2 = None, srcl3 = None, srcr3 = None, mask3 = None," \
             " dst3 = None, srcl4 = None, srcr4 = None, mask4 = None, dst4 = None)\n"
         "performs a general functional operation on component values from srcln and srcrn,"

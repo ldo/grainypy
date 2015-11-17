@@ -219,7 +219,7 @@ class BayerMatrix(DitherMatrix) :
 copy_channel = grainyx.copy_channel
 ordered_dither = grainyx.ordered_dither
 diffusion_dither = grainyx.diffusion_dither
-channel_op = grainyx.channel_op
+channel_op_2 = grainyx.channel_op_2
 
 def copy_image_channel(src_img, src_component, mask_img, mask_component, dst_img, dst_component) :
     "copies a specified component from a source image to a component of a destination" \
@@ -371,7 +371,7 @@ def diffusion_dither_image(dither, depth, src_img, src_bounds, dst_img, dst_boun
 #end diffusion_dither_image
 
 def bool_op_table(table, depth) :
-    "constructs a lookup table suitable for passing to channel_op. table must be" \
+    "constructs a lookup table suitable for passing to channel_op_2. table must be" \
     " a 4-tuple giving the destination pixel bit value where the corresponding srcl" \
     " and srcr pixel bit values are respectively (0, 0), (0, 1), (1, 0) and (1, 1)," \
     " and depth is the number of bits per channel component."
@@ -395,7 +395,7 @@ def bool_op_table(table, depth) :
 
 def arith_op_table(func, depth, wrap) :
     "given func being a function of two arguments in [0 .. 1], constructs a lookup table" \
-    " suitable for passing to channel_op by mapping the function result to pixel values in" \
+    " suitable for passing to channel_op_2 by mapping the function result to pixel values in" \
     " [0 .. (1 << depth) - 1]. If wrap, then out-of-range values are wrapped, else they are" \
     " clipped."
     cpnt_max = (1 << depth) - 1
@@ -413,7 +413,7 @@ def arith_op_table(func, depth, wrap) :
           )
 #end arith_op_table
 
-def image_channel_op(op_table, srcl_img, srcl_bounds, srcr_img, srcr_bounds, mask_img, mask_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
+def image_channel_op_2(op_table, srcl_img, srcl_bounds, srcr_img, srcr_bounds, mask_img, mask_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
     "performs the channel op defined by op_table on srcl_img and srcr_img optionally masked" \
     " by mask_img, putting the results into dst_img."
     if (
@@ -470,7 +470,7 @@ def image_channel_op(op_table, srcl_img, srcl_bounds, srcr_img, srcr_bounds, mas
             nr_components += 1
         #end if
     #end for
-    channel_op \
+    channel_op_2 \
       (
         op_table,
         srclchan[0], srcrchan[0], maskchan[0], dstchan[0],
@@ -480,4 +480,4 @@ def image_channel_op(op_table, srcl_img, srcl_bounds, srcr_img, srcr_bounds, mas
       )
     #end for
     dst_img.mark_dirty()
-#end image_channel_op
+#end image_channel_op_2
