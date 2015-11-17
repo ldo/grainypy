@@ -222,7 +222,7 @@ diffusion_dither = grainyx.diffusion_dither
 channel_op_1 = grainyx.channel_op_1
 channel_op_2 = grainyx.channel_op_2
 
-def copy_image_channel(src_img, src_component, mask_img, mask_component, dst_img, dst_component) :
+def image_copy_channel(src_img, src_component, mask_img, mask_component, dst_img, dst_component) :
     "copies a specified component from a source image to a component of a destination" \
     " image, optionally masked by a mask component. src_image, mask_image (if not None) and" \
     " dst_img must be qahirah.ImageSurface instances, while src_component, mask_component" \
@@ -249,7 +249,7 @@ def copy_image_channel(src_img, src_component, mask_img, mask_component, dst_img
         cairo_component(dst_img, dst_component), # dst
       )
     dst_img.mark_dirty()
-#end copy_image_channel
+#end image_copy_channel
 
 def construct_channels(src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
     if (
@@ -338,7 +338,7 @@ class diffusion :
 
 #end diffusion
 
-def ordered_dither_image(dither, depth, src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
+def image_ordered_dither(dither, depth, src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
     "dithers src_image into the corresponding components of dst_img using the specified" \
     " DitherMatrix, according to the booleans do_a, do_r, do_g and do_b. src_img and dst_img" \
     " may be the same image."
@@ -353,9 +353,9 @@ def ordered_dither_image(dither, depth, src_img, src_bounds, dst_img, dst_bounds
         srcchan[3], dstchan[3],
       )
     dst_img.mark_dirty()
-#end ordered_dither_image
+#end image_ordered_dither
 
-def diffusion_dither_image(dither, depth, src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
+def image_diffusion_dither(dither, depth, src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
     "dithers src_image into the corresponding components of dst_img using the specified" \
     " dict of relative diffusion weights, according to the booleans do_a, do_r, do_g" \
     " and do_b. src_img and dst_img may be the same image."
@@ -369,7 +369,7 @@ def diffusion_dither_image(dither, depth, src_img, src_bounds, dst_img, dst_boun
         srcchan[2], None, dstchan[2],
         srcchan[3], None, dstchan[3],
       )
-#end diffusion_dither_image
+#end image_diffusion_dither
 
 def bool_op_table(table, depth) :
     "constructs a lookup table suitable for passing to channel_op_2. table must be" \
