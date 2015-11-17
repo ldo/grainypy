@@ -1315,13 +1315,13 @@ static PyObject * grainyx_channel_op_1
                       {
                         srcobj[chan] = Py_None;
                       } /*if*/
-                    if (dstobj[chan] == 0)
-                      {
-                        dstobj[chan] = Py_None;
-                      } /*if*/
                     if (maskobj[chan] == 0)
                       {
                         maskobj[chan] = Py_None;
+                      } /*if*/
+                    if (dstobj[chan] == 0)
+                      {
+                        dstobj[chan] = Py_None;
                       } /*if*/
                     Py_INCREF(srcobj[chan]);
                     Py_INCREF(maskobj[chan]);
@@ -1588,13 +1588,13 @@ static PyObject * grainyx_channel_op_2
                       {
                         srcrobj[chan] = Py_None;
                       } /*if*/
-                    if (dstobj[chan] == 0)
-                      {
-                        dstobj[chan] = Py_None;
-                      } /*if*/
                     if (maskobj[chan] == 0)
                       {
                         maskobj[chan] = Py_None;
+                      } /*if*/
+                    if (dstobj[chan] == 0)
+                      {
+                        dstobj[chan] = Py_None;
                       } /*if*/
                     Py_INCREF(srclobj[chan]);
                     Py_INCREF(srcrobj[chan]);
