@@ -1275,6 +1275,273 @@ static PyObject * grainyx_copy_channel
         result;
   } /*grainyx_copy_channel*/
 
+static PyObject * grainyx_channel_op_1
+  (
+    PyObject * self,
+    PyObject * args
+  )
+  {
+    PyObject * result = 0;
+    cpnt_t * table = 0;
+    channel_t src[4], mask[4], dst[4];
+    bool gotchan[4], gotmask[4];
+    const channel_t * some_src;
+    const channel_t * some_mask;
+    const channel_t * some_dst;
+    do /*once*/
+      {
+          { /* get args */
+            PyObject * tableobj = 0;
+            PyObject * srcobj[4] = {0, 0, 0, 0};
+            PyObject * maskobj[4] = {0, 0, 0, 0};
+            PyObject * dstobj[4] = {0, 0, 0, 0};
+            uint table_size;
+            do /*once*/
+              {
+                const bool success = PyArg_ParseTuple
+                  (
+                    args, "O|OOOOOOOOOOOO",
+                    &tableobj,
+                    srcobj + 0, maskobj + 0, dstobj + 0,
+                    srcobj + 1, maskobj + 1, dstobj + 1,
+                    srcobj + 2, maskobj + 2, dstobj + 2,
+                    srcobj + 3, maskobj + 3, dstobj + 3
+                  );
+                Py_XINCREF(tableobj);
+              /* replace omitted arguments with None to simplify checks */
+                for (uint chan = 0; chan != 4; ++chan)
+                  {
+                    if (srcobj[chan] == 0)
+                      {
+                        srcobj[chan] = Py_None;
+                      } /*if*/
+                    if (dstobj[chan] == 0)
+                      {
+                        dstobj[chan] = Py_None;
+                      } /*if*/
+                    if (maskobj[chan] == 0)
+                      {
+                        maskobj[chan] = Py_None;
+                      } /*if*/
+                    Py_INCREF(srcobj[chan]);
+                    Py_INCREF(maskobj[chan]);
+                    Py_INCREF(dstobj[chan]);
+                  } /*for*/
+                if (not success)
+                    break;
+                for (uint chan = 0;;)
+                  {
+                    if (chan == 4)
+                        break;
+                    if ((srcobj[chan] != Py_None) != (dstobj[chan] != Py_None))
+                      {
+                        PyErr_SetString
+                          (
+                            PyExc_ValueError,
+                            "src and dst channels must be specified/omitted together"
+                          );
+                        break;
+                      } /*if*/
+                    ++chan;
+                  } /*for*/
+                if (PyErr_Occurred())
+                    break;
+                if (not PyTuple_Check(tableobj))
+                  {
+                    PyErr_SetString(PyExc_TypeError, "op_table must be tuple");
+                    break;
+                  } /*if*/
+                some_src = 0;
+                some_mask = 0;
+                some_dst = 0;
+                for (uint chan = 0;;)
+                  {
+                    if (chan == 4)
+                        break;
+                    gotchan[chan] = get_channel(srcobj[chan], false, some_src, src + chan);
+                    if (PyErr_Occurred())
+                        break;
+                    if (gotchan[chan])
+                      {
+                        get_channel(srcobj[chan], true, some_src, src + chan);
+                        if (PyErr_Occurred())
+                            break;
+                        gotmask[chan] = get_channel(maskobj[chan], false, some_mask, mask + chan);
+                        if (PyErr_Occurred())
+                            break;
+                        get_channel(dstobj[chan], true, some_dst, dst + chan);
+                        if (PyErr_Occurred())
+                            break;
+                        some_src = src + chan; /* in case not already set */
+                        if (gotmask[chan])
+                          {
+                            some_mask = mask + chan;
+                          } /*if*/
+                        some_dst = dst + chan;
+                      } /*if*/
+                    ++chan;
+                  } /*for*/
+                if (PyErr_Occurred())
+                    break;
+                if (gotchan[0] or gotchan[1] or gotchan[2] or gotchan[3])
+                  {
+                    if
+                      (
+                            some_src->bitwidth != some_dst->bitwidth
+                        or
+                            some_mask != 0 and some_mask->bitwidth != some_dst->bitwidth
+                      )
+                      {
+                        PyErr_SetString
+                          (
+                            PyExc_ValueError,
+                            "src, mask and dst must all have same bitwidth"
+                          );
+                        break;
+                      } /*if*/
+                    if (some_src->bitwidth > CPNT_BITS)
+                      {
+                        PyErr_Format(PyExc_ValueError, "bitwidth cannot exceed %d for now", CPNT_BITS);
+                        break;
+                      } /*if*/
+                    if
+                      (
+                            some_src->depth != 1 and some_src->depth != 4
+                        or
+                            some_mask != 0 and some_mask->depth != 1 and some_mask->depth != 4
+                        or
+                            some_dst->depth != 1 and some_dst->depth != 4
+                      )
+                      {
+                        PyErr_SetString
+                          (
+                            PyExc_ValueError,
+                            "only pixel depths of 1 and 4 bytes currently supported"
+                          );
+                        break;
+                      } /*if*/
+                    table_size = 1 << some_src->bitwidth;
+                    table = calloc(table_size, sizeof(cpnt_t));
+                    if (table == 0)
+                      {
+                        PyErr_NoMemory();
+                        break;
+                      } /*if*/
+                    for (uint index = 0;;)
+                      {
+                        if (index == table_size)
+                            break;
+                        PyObject * const elt = PyTuple_GetItem(tableobj, index);
+                          /* borrowed reference, valid as long as tableobj is valid */
+                        if (PyErr_Occurred())
+                            break;
+                        table[index] = PyLong_AsUnsignedLong(elt);
+                        if (PyErr_Occurred())
+                            break;
+                        ++index;
+                      } /*for*/
+                    if (PyErr_Occurred())
+                        break;
+                  } /*if*/
+              }
+            while (false);
+            Py_XDECREF(tableobj);
+            for (uint chan = 0; chan != 4; ++chan)
+              {
+                Py_XDECREF(srcobj[chan]);
+                Py_XDECREF(maskobj[chan]);
+                Py_XDECREF(dstobj[chan]);
+              } /*for*/
+          }
+        if (PyErr_Occurred())
+            break;
+        if (not (gotchan[0] or gotchan[1] or gotchan[2] or gotchan[3]))
+          {
+          /* nothing to do */
+            Py_INCREF(Py_None);
+            result = Py_None; /* return success */
+            break;
+          } /*if*/
+        Py_BEGIN_ALLOW_THREADS
+          { /* do the work */
+            for (uint row = 0; row != some_src->height; ++row)
+              {
+                const cpnt_t * const srcrow = some_src->baseaddr + row * some_src->stride;
+                const cpnt_t * const maskrow =
+                    some_mask != 0 ? some_mask->baseaddr + row * some_mask->stride : 0;
+                cpnt_t * const dstrow = some_dst->baseaddr + row * some_dst->stride;
+                for (uint col = 0; col != some_src->width; ++col)
+                  {
+                    for (uint chan = 0; chan != 4; ++chan)
+                      {
+                        if (gotchan[chan])
+                          {
+                            const uint srcmask = (1 << src[chan].bitwidth) - 1;
+                            const uint dstmask =
+                                (1 << dst[chan].bitwidth) - 1 << dst[chan].shiftoffset;
+                            const uint srcpix =
+                                src[chan].depth == 4 ?
+                                    ((uint32_t *)srcrow)[col]
+                                : /* src.depth = 1 */
+                                    srcrow[col];
+                            uint dstpix =
+                                dst[chan].depth == 4 ?
+                                    ((uint32_t *)dstrow)[col]
+                                : /* dst[chan].depth = 1 */
+                                    dstrow[col];
+                            uint val = table[srcpix >> src[chan].shiftoffset & srcmask];
+                            if (gotmask[chan])
+                              {
+                                const uint maskmask = (1 << mask[chan].bitwidth) - 1;
+                                const uint maskval =
+                                            (mask[chan].depth == 4 ?
+                                                ((uint32_t *)maskrow)[col]
+                                            : /* mask.depth = 1 */
+                                                maskrow[col]
+                                            )
+                                        >>
+                                            mask[chan].shiftoffset
+                                    &
+                                        maskmask;
+                                val =
+                                        (
+                                            val * maskval
+                                        +
+                                                ((dstpix & dstmask) >> dst[chan].shiftoffset)
+                                            *
+                                                (maskmask - maskval)
+                                        )
+                                    /
+                                        maskmask;
+                              } /*if*/
+                            dstpix =
+                                    dstpix & ~dstmask
+                                |
+                                    val << dst[chan].shiftoffset & dstmask;
+                            if (dst[chan].depth == 4)
+                              {
+                                ((uint32_t *)dstrow)[col] = dstpix;
+                              }
+                           else /* dst[chan].depth = 1 */
+                             {
+                                dstrow[col] = dstpix;
+                             } /*if*/
+                          } /*if*/
+                      } /*for*/
+                  } /*for*/
+              } /*for*/
+          }
+        Py_END_ALLOW_THREADS
+      /* all successfully done */
+        Py_INCREF(Py_None);
+        result = Py_None;
+      }
+    while (false);
+    free(table);
+    return
+        result;
+  } /*grainyx_channel_op_1*/
+
 static PyObject * grainyx_channel_op_2
   (
     PyObject * self,
@@ -1607,6 +1874,18 @@ static PyMethodDef grainyx_methods[] =
         "copies the contents of Channel instance src_channel to dst_channel, optionally " \
         " masked by mask_channel. You may copy between two channels of the same pixmap, but the" \
         " pixmaps should not otherwise overlap."
+    },
+    {"channel_op_1", grainyx_channel_op_1, METH_VARARGS,
+        "channel_op_1(table, src1 = None, mask1 = None, dst1 = None, src2 = None, mask2 = None,"
+        " dst2 = None, src3 = None, mask3 = None, dst3 = None, src4 = None, mask4 = None,"
+        " dst4 = None)\n"
+        "performs a general functional operation on component values from srcn into dstn, for"
+        " up to 4 sets of sources and destinations. All the srcn channels must come the same"
+        " pixmap; similarly all the dst channels must come from the same pixmap. All pixmaps"
+        " must have the same width and height, and all channels must have the same bitwidth."
+        " table is a tuple of integers, being the new destination component values corresponding"
+        " to each possible source component value. It is indexed by src_component, so its size"
+        " must be 1 << bitwidth."
     },
     {"channel_op_2", grainyx_channel_op_2, METH_VARARGS,
         "channel_op_2(table, srcl1 = None, srcr1 = None, mask1 = None, dst1 = None, srcl2 = None,"

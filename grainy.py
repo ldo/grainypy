@@ -219,6 +219,7 @@ class BayerMatrix(DitherMatrix) :
 copy_channel = grainyx.copy_channel
 ordered_dither = grainyx.ordered_dither
 diffusion_dither = grainyx.diffusion_dither
+channel_op_1 = grainyx.channel_op_1
 channel_op_2 = grainyx.channel_op_2
 
 def copy_image_channel(src_img, src_component, mask_img, mask_component, dst_img, dst_component) :
@@ -412,6 +413,67 @@ def arith_op_table(func, depth, wrap) :
             for pixr in range(1 << depth)
           )
 #end arith_op_table
+
+def image_channel_op_1(op_table, src_img, src_bounds, mask_img, mask_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
+    "performs the channel op defined by op_table on src_img optionally masked by mask_img," \
+    " putting the results into dst_img."
+    if (
+            not isinstance(src_img, qahirah.ImageSurface)
+        or
+            mask_img != None and not isinstance(mask_img, qahirah.ImageSurface)
+        or
+            not isinstance(dst_img, qahirah.ImageSurface)
+    ) :
+        raise TypeError("img args must be qahirah.ImageSurface instances")
+    #end if
+    src_img.flush()
+    if mask_img != None :
+        mask_img.flush()
+    #end if
+    dst_img.flush()
+    srcchan = [None] * 4
+    maskchan = [None] * 4
+    dstchan = [None] * 4
+    nr_components = 0
+    for \
+        doit, component \
+    in \
+        (
+            (do_a, CAIRO_PIX.A),
+            (do_r, CAIRO_PIX.R),
+            (do_g, CAIRO_PIX.G),
+            (do_b, CAIRO_PIX.B),
+        ) \
+    :
+        if doit :
+            srcchan[nr_components] = cairo_component(src_img, component)
+            if src_bounds != None :
+                srcchan[nr_components] = srcchan[nr_components].subrect(src_bounds)
+            #end if
+            if mask_img != None :
+                maskchan[nr_components] = cairo_component(mask_img, component)
+                if mask_bounds != None :
+                    maskchan[nr_components] = maskchan[nr_components].subrect(mask_bounds)
+                #end if
+            #end if
+            dstchan[nr_components] = cairo_component(dst_img, component)
+            if dst_bounds != None :
+                dstchan[nr_components] = dstchan[nr_components].subrect(dst_bounds)
+            #end if
+            nr_components += 1
+        #end if
+    #end for
+    channel_op_1 \
+      (
+        op_table,
+        srcchan[0], maskchan[0], dstchan[0],
+        srcchan[1], maskchan[1], dstchan[1],
+        srcchan[2], maskchan[2], dstchan[2],
+        srcchan[3], maskchan[3], dstchan[3],
+      )
+    #end for
+    dst_img.mark_dirty()
+#end image_channel_op_1
 
 def image_channel_op_2(op_table, srcl_img, srcl_bounds, srcr_img, srcr_bounds, mask_img, mask_bounds, dst_img, dst_bounds, do_a, do_r, do_g, do_b) :
     "performs the channel op defined by op_table on srcl_img and srcr_img optionally masked" \
