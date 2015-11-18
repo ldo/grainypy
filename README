@@ -1,0 +1,17 @@
+**GrainyPy** is a set of Python functions that take high-quality
+images and make them look like rubbish. There are functions for
+applying various dithering algorithms, which reduce the bit depth of
+an image while trying to maintain an approximation of the original
+colours, and some other pixel-mungint stuff.
+
+The low-level functionality is implemented in **grainyx**, which is
+written in C. The **grainy** higher-level wrapper provides an
+interface with the Cairo 2D graphics library, as well as other
+functionality that makes the operations easier to use.
+
+Installation is explained in the setup.py script. This module also
+requires [Qahirah](https://github.com/ldo/qahirah), my Cairo graphics
+wrapper, to be installed.
+
+Lawrence D'Oliveiro <ldo@geek-central.gen.nz>
+2015 November 18
