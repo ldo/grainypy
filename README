@@ -13,5 +13,8 @@ Installation is explained in the setup.py script. This module also
 requires [Qahirah](https://github.com/ldo/qahirah), my Cairo graphics
 wrapper, to be installed.
 
+Example code showing GrainyPy in action is available from
+the [grainypy_examples](https://github.com/ldo/grainypy_examples) repo.
+
 Lawrence D'Oliveiro <ldo@geek-central.gen.nz>
 2015 November 18
