@@ -16,6 +16,7 @@ distutils.core.setup \
     description = "Make High-Quality Images Look Grainy",
     author = "Lawrence D’Oliveiro",
     author_email = "ldo@geek-central.gen.nz",
+    url = "https://github.com/ldo/grainypy",
     py_modules = ["grainy"],
     ext_modules =
         [
