@@ -291,10 +291,11 @@ def construct_channels(src_img, src_bounds, dst_img, dst_bounds, do_a, do_r, do_
 #end construct_channels
 
 class diffusion :
-    "various useful error-diffusion matrices. Each matrix is represented as a dict" \
-    " with the key being the (row, col) integer coordinates, and the value being" \
-    " the relative weight (may be integer or real). row numbers must not be negative." \
-    " On row 0, column numbers must be positive."
+    "various useful error-diffusion matrices, taken from description at" \
+    " <http://www.efg2.com/Lab/Library/ImageProcessing/DHALF.TXT>. Each matrix" \
+    " is represented as a dict with the key being the (row, col) integer coordinates," \
+    " and the value being the relative weight (may be integer or real). row numbers must" \
+    " not be negative. On row 0, column numbers must be positive."
 
     floyd_steinberg = \
         {
