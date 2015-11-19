@@ -1,8 +1,8 @@
-**GrainyPy** is a set of Python functions that take high-quality
-images and make them look like rubbish. There are functions for
-applying various dithering algorithms, which reduce the bit depth of
-an image while trying to maintain an approximation of the original
-colours, and some other pixel-mungint stuff.
+**GrainyPy** is a set of functions for Python 3.4 or later that take
+high-quality images and make them look like rubbish. There are
+functions for applying various dithering algorithms, which reduce the
+bit depth of an image while trying to maintain an approximation of the
+original colours, and some other pixel-mungint stuff.
 
 The low-level functionality is implemented in **grainyx**, which is
 written in C. The **grainy** higher-level wrapper provides an
@@ -17,4 +17,4 @@ Example code showing GrainyPy in action is available from
 the [grainypy_examples](https://github.com/ldo/grainypy_examples) repo.
 
 Lawrence D'Oliveiro <ldo@geek-central.gen.nz>
-2015 November 18
+2015 November 19
