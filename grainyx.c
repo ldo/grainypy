@@ -1387,6 +1387,24 @@ static PyObject * grainyx_channel_op_1
                   {
                     if
                       (
+                            some_src->width != some_dst->width
+                        or
+                            some_mask != 0 and some_mask->width != some_dst->width
+                        or
+                            some_src->height != some_dst->height
+                        or
+                            some_mask != 0 and some_mask->height != some_dst->height
+                      )
+                      {
+                        PyErr_SetString
+                          (
+                            PyExc_ValueError,
+                            "src, mask and dst must all have same width and height"
+                          );
+                        break;
+                      } /*if*/
+                    if
+                      (
                             some_src->bitwidth != some_dst->bitwidth
                         or
                             some_mask != 0 and some_mask->bitwidth != some_dst->bitwidth
@@ -1666,6 +1684,28 @@ static PyObject * grainyx_channel_op_2
                     break;
                 if (gotchan[0] or gotchan[1] or gotchan[2] or gotchan[3])
                   {
+                    if
+                      (
+                            some_srcl->width != some_srcr->width
+                        or
+                            some_srcr->width != some_dst->width
+                        or
+                            some_mask != 0 and some_mask->width != some_dst->width
+                        or
+                            some_srcl->height != some_srcr->height
+                        or
+                            some_srcr->height != some_dst->height
+                        or
+                            some_mask != 0 and some_mask->height != some_dst->height
+                      )
+                      {
+                        PyErr_SetString
+                          (
+                            PyExc_ValueError,
+                            "srcl, srcr, mask and dst must all have same width and height"
+                          );
+                        break;
+                      } /*if*/
                     if
                       (
                             some_srcl->bitwidth != some_srcr->bitwidth
