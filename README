@@ -2,7 +2,7 @@
 high-quality images and make them look like rubbish. There are
 functions for applying various dithering algorithms, which reduce the
 bit depth of an image while trying to maintain an approximation of the
-original colours, and some other pixel-mungint stuff.
+original colours, and some other pixel-munging stuff.
 
 The low-level functionality is implemented in **grainyx**, which is
 written in C. The **grainy** higher-level wrapper provides an
