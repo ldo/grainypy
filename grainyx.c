@@ -613,7 +613,7 @@ static PyObject * put_diffusion_errors
             if (PyErr_Occurred())
                 break;
             PyTuple_SET_ITEM(tempresult, row, temprow);
-            temprow = 0; /* do I don’t dispose of it yet */
+            temprow = 0; /* so I don’t dispose of it yet */
             ++row;
           } /*for*/
         if (PyErr_Occurred())
