@@ -1,20 +1,20 @@
-**GrainyPy** is a set of functions for Python 3.4 or later that take
-high-quality images and make them look like rubbish. There are
-functions for applying various dithering algorithms, which reduce the
-bit depth of an image while trying to maintain an approximation of the
-original colours, and some other pixel-munging stuff.
+**GrainyPy** is a set of functions for Python 3.4 or later that take high-quality images
+and make them look like rubbish. There are functions for applying various dithering
+algorithms, which reduce the bit depth of an image while trying to maintain an
+approximation of the original colours, and some other pixel-munging stuff.
 
-The low-level functionality is implemented in **grainyx**, which is
-written in C. The **grainy** higher-level wrapper provides an
-interface with the Cairo 2D graphics library, as well as other
+The low-level functionality is implemented in **grainyx**, which is written in C. The
+**grainy** higher-level wrapper provides an interface with the
+[Cairo](https://www.cairographics.org/) 2D graphics library, as well as other
 functionality that makes the operations easier to use.
 
-Installation is explained in the setup.py script. This module also
-requires [Qahirah](https://github.com/ldo/qahirah), my Cairo graphics
-wrapper, to be installed.
+Installation is explained in the setup.py script. This module also requires Qahirah
+([GitLab](https://gitlab.com/ldo/qahirah), [GitHub](https://github.com/ldo/qahirah)), my
+Cairo graphics wrapper, to be installed.
 
-Example code showing GrainyPy in action is available from
-the [grainypy_examples](https://github.com/ldo/grainypy_examples) repo.
+Example code showing GrainyPy in action is available from the grainypy_examples
+([GitLab](https://gitlab.com/ldo/grainypy_examples),
+[GitHub](https://github.com/ldo/grainypy_examples)) repo.
 
 Lawrence D'Oliveiro <ldo@geek-central.gen.nz>
-2015 November 19
+2017 April 7
